@@ -1,0 +1,42 @@
+[project]
+name = "gold-smc-ict-bot"
+version = "0.1.0"
+description = "Professional XAUUSD (Gold) Telegram trading bot — SMC/ICT methodology, AI reasoning, news-aware. Advisory only; never auto-trades."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "gold-smc-ict-bot contributors" }]
+keywords = ["xauusd", "gold", "trading", "smc", "ict", "telegram", "bot"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "ruff>=0.4", "mypy>=1.8"]
+
+[project.scripts]
+goldbot = "goldbot.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
