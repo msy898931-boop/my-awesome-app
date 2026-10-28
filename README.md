@@ -30,6 +30,13 @@ it. Everything it sends is a reading, not an instruction.
   flagged and the idea follows once the window closes, and the card a trader
   asks for shows the read without the entry/stop/target, saying plainly that a
   setup is withheld rather than pretending the market is flat.
+- **Names the macro wind, and does not pretend to trade it.** Gold's level
+  correlation with the broad dollar is about **-0.6**, and this bot reads the
+  dollar (EURUSD, live) and the real yield (FRED) so a card can say which way
+  the wind blows — and say so plainly when a plan is leaning into it. It is
+  **context, never a signal**: the relationship is contemporaneous, not
+  leading, and gating the setups on it made the backtest *worse*. See
+  `news/macro.py` for the two measurements behind that choice.
 - **Asks an AI for the narrative.** With a Groq key the bot adds a written
   read on top of the deterministic facts; without a key it still produces the
   full SMC/ICT plan, just without commentary.
@@ -110,6 +117,7 @@ clobbered by a stale file. `.env` is gitignored; never commit it.
 | `GOLDBOT_CACHE_SECONDS` | Reuse a read within this window (default 90) |
 | `GOLDBOT_ENABLE_*` | Toggle each data provider (`KRAKEN`, `BINANCE`, `GOLDAPI`, `YAHOO`) |
 | `GOLDBOT_ENABLE_ARCHIVE` / `GOLDBOT_ARCHIVE_DIR` | Local archive on/off and where it lives |
+| `GOLDBOT_ENABLE_MACRO` | Macro context (dollar, real yield) on/off. Context only, never a signal |
 | `GOLDBOT_ENABLE_BOT` | Master switch for the bot loop |
 | `PORT` | When set, a health endpoint is served on it (for web hosts) |
 
@@ -125,6 +133,8 @@ All are keyless.
 | `binance:PAXGUSDT` | **Deep history** via `data-api.binance.vision`, back to 2020-08-28 |
 | `gold-api:XAU` | **Spot cross-check** only; serves no candles |
 | Yahoo `GC=F` | **Disabled by default** — futures carry a contango premium and the endpoint rate-limits hard |
+| FRED CSV (`DFII10`, `DTWEXBGS`, `T10YIE`) | **Macro context** — real yield, broad dollar, inflation expectation. Keyless CSV, daily |
+| `binance:EURUSDT` | **Live dollar proxy** for the macro context. Keyless, same host as the candles |
 
 The feed folds every fetch into a local archive (de-duplicated, sorted,
 atomic write) and reads from it when the network is unavailable. With Binance
@@ -142,11 +152,11 @@ down.
 ```bash
 make check                     # ruff + format + mypy + bandit + pip-audit + pytest
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 480 tests
+python -m pytest tests/ -q     # 519 tests
 ```
 
-CI runs the suite under `coverage` and **fails below a floor of 94%** of
-`src/goldbot` (measured 95% on the current revision, no module under 85%), so the
+CI runs the suite under `coverage` and **fails below a floor of 95%** of
+`src/goldbot` (measured 96% on the current revision, no module under 85%), so the
 number cannot drift away from the truth unnoticed.
 
 ---
@@ -217,12 +227,12 @@ src/goldbot/
   data/             providers: kraken, binance, goldapi, yahoo, archive, feed
   smc/              primitives (ATR, swings, structure) and the fact engine
   strategy/         plan construction and position sizing
-  news/             economic calendar, RSS headlines, blackout windows
+  news/             economic calendar, RSS headlines, blackout, macro context
   ai/               Groq client and prompt
   telegram/         client, formatting, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
-tests/              480 tests
+tests/              519 tests
 ```
 
 ---

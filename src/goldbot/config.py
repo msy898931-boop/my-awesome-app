@@ -117,6 +117,10 @@ class Settings:
     enable_goldapi: bool = field(default_factory=lambda: _flag("GOLDBOT_ENABLE_GOLDAPI", True))
 
     enable_bot: bool = field(default_factory=lambda: _flag("GOLDBOT_ENABLE_BOT", True))
+    # The macro backdrop (dollar, real yield) is context, never a signal. On by
+    # default because it is keyless and cheap; switchable off for a purely
+    # price-based read.
+    enable_macro: bool = field(default_factory=lambda: _flag("GOLDBOT_ENABLE_MACRO", True))
     # The archive accumulates candles across runs; free sources only ever hand
     # back about a week of intraday, so this is the only way to build a sample
     # worth backtesting on.

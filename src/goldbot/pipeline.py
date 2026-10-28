@@ -117,7 +117,7 @@ class Pipeline:
 
         if with_news:
             try:
-                result.news = news_digest(now)
+                result.news = news_digest(now, with_macro=self.settings.enable_macro)
             except Exception as exc:
                 result.errors.append(f"news: {type(exc).__name__}: {exc}")
 

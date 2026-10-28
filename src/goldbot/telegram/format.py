@@ -21,6 +21,16 @@ NEWS_METHOD = (
 BIAS_AR = {"bullish": "صاعد 📈", "bearish": "هابط 📉", "neutral": "محايد ↔️"}
 DIR_AR = {"buy": "شراء 🟢", "sell": "بيع 🔴", "none": "لا صفقة ⚪"}
 
+# The macro backdrop, in the one word that matters for gold. ``unknown`` is a
+# stated non-answer: the macro is quiet, which is not the same as neutral.
+MACRO_AR = {
+    "tailwind": "ريح داعمة 🌬️",
+    "headwind": "ريح معاكسة 🌪️",
+    "mixed": "إشارات متضاربة ↔️",
+    "neutral": "هادئ ↔️",
+    "unknown": "غير محدّد —",
+}
+
 
 def _esc(text: str) -> str:
     """Escape Markdown control characters so a stray `_` cannot break the card."""
@@ -75,6 +85,40 @@ def blackout_blocks_idea(news: dict | None) -> bool:
     return bool((news or {}).get("blackout", {}).get("active"))
 
 
+def macro_lines(news: dict | None, direction: str = "none") -> list[str]:
+    """The macro backdrop as card lines, or ``[]`` when there is nothing to say.
+
+    This is context, not a signal: it never changes the direction a plan chose.
+    It exists because the study found the setup is beta to gold, so a trader is
+    owed the name of the wind the plan is standing in — most of all when the
+    plan is leaning into it. A quiet or unread macro adds nothing rather than a
+    reassuring default, so an unchecked feed prints a plain "could not read"
+    instead of silence that reads as calm.
+    """
+    macro = (news or {}).get("macro") or {}
+    if not macro:
+        return []
+    if not macro.get("checked"):
+        return ["", "🌍 *الماكرو:* تعذّر الفحص — لا يُدَّعى شيء عن الدولار."]
+    bias = str(macro.get("bias") or "unknown")
+    label = MACRO_AR.get(bias, bias)
+    bits: list[str] = []
+    fx = macro.get("fx_change_1d_pct")
+    if fx is not None:
+        arrow = "▲" if fx > 0 else "▼" if fx < 0 else "="
+        bits.append(f"EURUSD {arrow}{abs(fx):.2f}%")
+    ry = macro.get("real_yield_10y")
+    if ry is not None:
+        bits.append(f"عائد حقيقي {ry:.2f}%")
+    tail = f" ({' · '.join(bits)})" if bits else ""
+    lines = ["", f"🌍 *الماكرو:* {label}{tail}"]
+    if bias == "headwind" and direction == "buy":
+        lines.append("_⚠️ الشراء يسبح عكس اتجاه الدولار — هذا بيتا على الذهب، لا حافة._")
+    elif bias == "tailwind" and direction == "sell":
+        lines.append("_⚠️ البيع يسبح عكس اتجاه الدولار — هذا بيتا على الذهب، لا حافة._")
+    return lines
+
+
 def format_plan(plan: dict, analysis: dict | None = None, news: dict | None = None) -> str:
     """The main card: a plan, its numbers, and the reasoning behind it.
 
@@ -116,6 +160,7 @@ def format_plan(plan: dict, analysis: dict | None = None, news: dict | None = No
         lines += ["", "*ما لم يتحقق:*"]
         lines += [f"• {_esc(str(r))}" for r in plan["rejected"][:3]]
 
+    lines += macro_lines(news, direction)
     lines += ["", ADVISORY]
     return "\n".join(lines)
 
@@ -155,6 +200,7 @@ def format_status(plan: dict, analysis: dict | None = None, news: dict | None = 
                 f"📅 أقرب حدث: {_esc(str(nxt.get('title')))} "
                 f"[{_esc(str(nxt.get('country')))}] بعد {nxt.get('in_minutes')} دقيقة",
             ]
+    lines += macro_lines(news, plan.get("direction", "none"))
     lines += ["", ADVISORY]
     return "\n".join(lines)
 
@@ -294,6 +340,8 @@ def format_news(news: dict) -> str:
             src = _esc(str(h.get("source") or ""))
             suffix = f" — {src}" if src else ""
             lines.append(f"  • {_esc(str(h.get('title')))}{suffix}")
+
+    lines += _macro_section(news)
     # No headlines and the feeds were down: say so, rather than let an empty
     # section read as "nothing happened in the world". With stale headlines
     # shown, the reader still gets the news, but the age is flagged.
@@ -307,3 +355,41 @@ def format_news(news: dict) -> str:
 
     lines += ["", NEWS_METHOD, "", ADVISORY]
     return "\n".join(lines)
+
+
+def _macro_section(news: dict) -> list[str]:
+    """The macro block on the news card: the numbers, and what they mean.
+
+    Shown with its own honesty note, because the correlation is real but it is
+    contemporaneous — the numbers describe the wind now, not where gold goes
+    next. A failed read says so rather than printing a calm blank.
+    """
+    macro = news.get("macro") or {}
+    if not macro:
+        return []
+    lines = ["", "🌍 *الماكرو (سياق لا إشارة):*"]
+    if not macro.get("checked"):
+        reason = _esc(str(macro.get("error") or "المصدر لم يستجب"))
+        lines.append(f"_⚠️ تعذّر الفحص: {reason}_")
+        return lines
+
+    fx = macro.get("fx_change_1d_pct")
+    if fx is not None:
+        arrow = "▲" if fx > 0 else "▼" if fx < 0 else "="
+        lines.append(f"  • EURUSD: {arrow}{abs(fx):.2f}% خلال اليوم")
+    ry, ryc = macro.get("real_yield_10y"), macro.get("real_yield_change")
+    if ry is not None:
+        move = f" ({'+' if (ryc or 0) >= 0 else ''}{ryc:.2f} خلال 5 جلسات)" if ryc else ""
+        lines.append(f"  • العائد الحقيقي 10 سنوات: {ry:.2f}%{move}")
+    dollar, dc = macro.get("broad_dollar"), macro.get("broad_dollar_change")
+    if dollar is not None:
+        move = f" ({'+' if (dc or 0) >= 0 else ''}{dc:.2f})" if dc else ""
+        lines.append(f"  • مؤشر الدولار الواسع: {dollar:.1f}{move}")
+
+    bias = str(macro.get("bias") or "unknown")
+    lines.append(f"  • *الخلاصة:* {MACRO_AR.get(bias, bias)}")
+    if bias in {"tailwind", "headwind"}:
+        lines.append(
+            "_ارتباط الذهب بالدولار نحو -0.6، لكنه متزامن لا سابق — يوصف الريح ولا يتنبّأ بها._"
+        )
+    return lines

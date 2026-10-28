@@ -7,6 +7,26 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **A macro context layer (`news/macro.py`), stated as context and never as a
+  signal.** The bot now reads the dollar and the real yield from two keyless
+  sources — FRED's CSV (`DFII10`, `DTWEXBGS`, `T10YIE`) and `EURUSDT` from the
+  same Binance host already used for candles — and puts one honest word on the
+  card: tailwind, headwind, mixed, or a stated "unknown". When a plan leans into
+  the wind it says so out loud ("الشراء يسبح عكس اتجاه الدولار — هذا بيتا على
+  الذهب، لا حافة").
+  Two measurements, run before any of it was written, are why it is context and
+  not a filter: the gold/dollar link is **contemporaneous, not leading**
+  (EURUSD's prior-bar move correlates with gold's move at +0.004 daily, -0.045
+  intraday), and gating gold momentum on dollar agreement made the result
+  **worse** (5-day lookback: mean +0.020% per bar alone versus -0.017% with the
+  filter). The layer is off-switchable with `GOLDBOT_ENABLE_MACRO=0`.
+  The honesty rules match the calendar's: a failed read is reported, never
+  rendered as a calm macro; a kept-but-stale number is not served as clean; and
+  a quiet macro says `unknown`, which is a different claim from `neutral`.
+- Macro context is carried into the AI prompt as a labelled note ("سياق فقط …
+  لا يغيّر اتجاه الخطة"), and omitted entirely when it could not be read.
+- 39 tests for the macro layer, its voting, its failure reporting and its card
+  rendering. Total coverage 95→**96%** (519 tests).
 - **Static security analysis and a dependency audit in CI.** `bandit` scans the
   package and `pip-audit` checks the project's own dependencies against the
   advisory database; both run on Python 3.10 and 3.12 and fail the build on a

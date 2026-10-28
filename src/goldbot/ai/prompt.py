@@ -68,6 +68,18 @@ def build_prompt(facts: dict, news: dict | None = None, compact: bool = True) ->
             "released": news.get("released", [])[:3],
             "headlines": [h.get("title") for h in news.get("headlines", [])[:4]],
         }
+        macro = news.get("macro") or {}
+        if macro.get("checked"):
+            # Context, not a fact to trade: the model is told the wind, and told
+            # it does not predict. Left out entirely when unread, so silence
+            # never reads as "macro is calm".
+            payload["macro"] = {
+                "bias": macro.get("bias"),
+                "eurusd_change_1d_pct": macro.get("fx_change_1d_pct"),
+                "real_yield_10y": macro.get("real_yield_10y"),
+                "real_yield_change_5d": macro.get("real_yield_change"),
+                "note": "سياق فقط: الارتباط متزامن لا سابق، ولا يغيّر اتجاه الخطة.",
+            }
     return (
         "ورقة الحقائق المحسوبة من الشمعات المغلقة:\n"
         + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
