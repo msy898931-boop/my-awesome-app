@@ -134,7 +134,7 @@ down.
 
 ```bash
 make check                     # ruff + format + mypy + pytest (what CI runs)
-python -m pytest tests/ -q     # 172 tests
+python -m pytest tests/ -q     # 230 tests
 ```
 
 ---
@@ -210,7 +210,7 @@ src/goldbot/
   telegram/         client, formatting, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
-tests/              172 tests
+tests/              230 tests
 ```
 
 ---

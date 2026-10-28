@@ -11,8 +11,13 @@ from __future__ import annotations
 
 from goldbot.strategy.plan import (
     MAX_ZONE_ATR,
+    MIN_STOP_PCT,
     _best_zone,
+    _candidate,
+    _opposing_liquidity,
+    _stop_for,
     _try_bos_continuation,
+    _try_choch_retest,
     _try_sweep_reversal,
     pick_setup,
 )
@@ -189,6 +194,176 @@ def test_sweep_reversal_needs_the_right_side_swept():
         sweeps=[{"side": "buy_side_taken", "level": 4070.0}],
     )
     assert _try_sweep_reversal({"M15": f}, "buy", 2.0) is None
+
+
+# ── setup 1: CHoCH + FVG/OB retest ───────────────────────────────────────
+
+
+def test_choch_retest_builds_the_highest_quality_setup():
+    """The setup the docstring calls the best entry, built end to end.
+
+    A bullish CHoCH on the LTF confirms the higher-frame bias, price returns to
+    the demand gap below it, and the opposing pool pays for the risk.
+    """
+    frames = {
+        "H4": _frame(),
+        "M15": _frame(
+            close=4060.0,
+            atr=12.0,
+            event={"type": "CHoCH", "direction": "bullish"},
+            gaps=[{"side": "bullish", "top": 4050.0, "bottom": 4048.0, "filled": False}],
+            swing_high=4075.0,
+            swing_low=4045.0,
+        ),
+    }
+    plan = pick_setup(_facts(frames), 2.0)
+    assert plan.is_actionable
+    assert plan.direction == "buy"
+    assert plan.setup.startswith("CHoCH")
+    assert plan.entry == 4050.0, "entry is the near edge of the zone"
+    assert plan.stop < plan.entry < plan.target
+    assert plan.score == 4, "base 3 plus the discount-zone bonus"
+
+
+def test_choch_retest_needs_the_higher_frame_agreement():
+    """A bullish CHoCH under a bearish H4 must not be traded long."""
+    frames = {
+        "H4": _frame(trend="bearish"),
+        "M15": _frame(
+            close=4060.0,
+            event={"type": "CHoCH", "direction": "bullish"},
+            gaps=[{"side": "bullish", "top": 4050.0, "bottom": 4048.0, "filled": False}],
+        ),
+    }
+    assert _try_choch_retest(frames, "buy", 2.0) is None
+
+
+def test_choch_retest_needs_the_matching_event_direction():
+    frames = {
+        "H4": _frame(),
+        "M15": _frame(
+            close=4060.0,
+            event={"type": "CHoCH", "direction": "bearish"},
+            gaps=[{"side": "bullish", "top": 4050.0, "bottom": 4048.0, "filled": False}],
+        ),
+    }
+    assert _try_choch_retest(frames, "buy", 2.0) is None
+
+
+def test_an_order_block_is_a_zone_too():
+    f = _frame(
+        close=4060.0,
+        blocks=[{"side": "bullish", "top": 4050.0, "bottom": 4048.0, "mitigated": False}],
+    )
+    zone = _best_zone(f, "buy", 12.0)
+    assert zone is not None and zone[2] == "OB"
+
+
+def test_a_sell_zone_above_price_is_used():
+    f = _frame(
+        trend="bearish",
+        close=4060.0,
+        gaps=[{"side": "bearish", "top": 4070.0, "bottom": 4068.0, "filled": False}],
+    )
+    zone = _best_zone(f, "sell", 12.0)
+    assert zone is not None
+    entry, _stop, kind, far_edge = zone
+    assert entry == 4068.0 and kind == "FVG" and far_edge == 4070.0
+
+
+# ── the stop floor and the target gate ───────────────────────────────────
+
+
+def test_a_tight_anchor_is_pushed_out_to_the_floor():
+    """A stop inside the noise is widened, so the R:R is not flattered."""
+    stop = _stop_for("buy", 4000.0, 3999.9, atr=10.0)
+    assert stop is not None and stop < 4000.0
+    assert 4000.0 - stop >= 4000.0 * MIN_STOP_PCT - 1e-9
+
+
+def test_a_wrong_side_anchor_is_clamped_to_the_floor():
+    """An anchor on the wrong side of entry is ignored; the floor still holds.
+
+    ``_stop_for`` takes the *tighter* of the anchor and the floor for a buy, so
+    an anchor above entry cannot widen the stop past it — it is simply not used.
+    """
+    stop = _stop_for("buy", 4000.0, 4010.0, atr=10.0)
+    assert stop is not None and stop < 4000.0
+    assert 4000.0 - stop == 4000.0 * MIN_STOP_PCT
+
+
+def test_opposing_liquidity_skips_a_pool_too_close_to_pay():
+    """The nearest pool is not the target if it does not clear the R:R."""
+    frames = {
+        "M15": {
+            "liquidity": {
+                "equal_highs": [{"price": 4002.0}, {"price": 4020.0}],
+                "equal_lows": [],
+            },
+            "last_swing_high": None,
+        }
+    }
+    target = _opposing_liquidity(frames, "buy", entry=4000.0, stop=3990.0, min_rr=2.0)
+    assert target == 4020.0, "the 4002 pool is only 0.2R away and must be skipped"
+
+
+def test_opposing_liquidity_is_none_when_nothing_pays():
+    frames = {"M15": {"liquidity": {"equal_highs": [{"price": 4002.0}]}, "last_swing_high": None}}
+    assert _opposing_liquidity(frames, "buy", entry=4000.0, stop=3990.0, min_rr=2.0) is None
+
+
+def test_sell_target_comes_from_the_lows_ahead():
+    frames = {
+        "M15": {
+            "liquidity": {"equal_lows": [{"price": 3980.0}], "equal_highs": []},
+            "last_swing_low": None,
+        }
+    }
+    assert _opposing_liquidity(frames, "sell", entry=4000.0, stop=4010.0, min_rr=2.0) == 3980.0
+
+
+def test_an_over_far_target_is_refused():
+    """An R:R past ``MAX_RR`` is not a better trade; the pool is unreachable."""
+    frame = _frame(close=4000.0, swing_high=4200.0, swing_low=3990.0)
+    frame["liquidity"] = {"equal_highs": [{"price": 4200.0}], "equal_lows": []}
+    plan = _candidate(
+        "buy",
+        4000.0,
+        3990.0,
+        10.0,
+        {"M15": frame},
+        2.0,
+        setup="x",
+        reason="",
+        score=1,
+        factors=[],
+        timeframe="M15",
+    )
+    assert plan is None
+
+
+# ── no frames, neutral bias ──────────────────────────────────────────────
+
+
+def test_no_frames_yields_an_empty_plan():
+    plan = pick_setup({"timeframes": {}}, 2.0)
+    assert plan.direction == "none" and plan.rejected
+
+
+def test_a_neutral_bias_tries_both_directions():
+    """A neutral read opens both sides; a biased one only opens its own."""
+    frames = {"M15": _frame()}
+    plan = pick_setup(_facts(frames, bias="neutral"), 2.0)
+    assert any(r.startswith("buy:") for r in plan.rejected)
+    assert any(r.startswith("sell:") for r in plan.rejected)
+
+
+def test_a_counter_bias_direction_is_refused_up_front():
+    """In a bullish bias the sell side is rejected before it is built."""
+    frames = {"M15": _frame()}
+    plan = pick_setup(_facts(frames, bias="bullish"), 2.0)
+    assert any("sell: مرفوض" in r for r in plan.rejected)
+    assert not any(r.startswith("buy: مرفوض") for r in plan.rejected)
 
 
 # ── integration through pick_setup ───────────────────────────────────────

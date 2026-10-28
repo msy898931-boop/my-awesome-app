@@ -16,8 +16,22 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   retracement rule, which had no coverage.
 - Blackout tests: the window withholds a new idea, the price card still goes
   out, and the withheld idea is delivered once the window closes.
+- The RSS feeds now report their health like the calendar: `rss.ok`,
+  `rss.error` and `rss.stale` are surfaced in the news digest and the card, so
+  an empty headline list is no longer indistinguishable from a dead feed. A
+  total outage keeps the last good read and backs off; one dead outlet does not
+  sink the others.
+- Tests for `strategy/plan.py` (the CHoCH retest path, the stop floor, the
+  target gate), `news/rss.py`, `data/kraken.py` (the live candle source, which
+  had none) and `config.py` (the `.env` parser and the coercion helpers).
 
 ### Changed
+- `news/rss.py` refuses an oversized body and any document carrying a
+  `DOCTYPE`/`ENTITY` declaration before parsing it, the stdlib-only defence
+  against entity-expansion attacks. Verified against all three live feeds,
+  which carry no DOCTYPE.
+- Coverage rose from 84% to 88%; the critical modules are now `plan.py` 95%,
+  `rss.py` 97%, `kraken.py` 97%, `config.py` 96%.
 - The blackout is now **enforced**, not merely printed. A high-impact window
   withholds the direction and setup from the automatic push; the idea is
   remembered and sent when the window closes, and survives a restart.
@@ -33,6 +47,10 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `GOLDBOT_ENABLE_ARCHIVE` and `GOLDBOT_ARCHIVE_DIR`.
 
 ### Fixed
+- `models.Bar.is_sane` now rejects a **zero or negative** price. The
+  `clean_bars` docstring already promised to drop the zero-price seed row, but
+  the check let it through, so an empty provider row could reach ATR and every
+  structure level as a real price.
 - `data/binance.py` filtered `None` rows *after* reading `page[0].time`, a
   crash risk on a partial page; the filter now runs first.
 - `research/study_robust.py` closed over a loop variable (ruff B023), so it

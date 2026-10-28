@@ -134,5 +134,26 @@ def test_headlines_show_their_source():
     assert "Gold holds $4000 — WSJ Markets" in card
 
 
+def test_a_failed_headline_feed_is_not_reported_as_no_news():
+    """An empty section must not read as 'nothing happened in the world'."""
+    card = _card(source={"calendar_ok": True, "rss_ok": False, "rss_error": "URLError"})
+    assert "تعذّر جلب العناوين" in card
+    assert "URLError" in card
+
+
+def test_stale_headlines_are_shown_but_flagged():
+    card = _card(
+        source={"calendar_ok": True, "rss_ok": False, "rss_stale": True, "rss_error": "HTTP 503"},
+        headlines=[{"title": "Gold up", "source": "WSJ Markets"}],
+    )
+    assert "Gold up" in card
+    assert "قديمة" in card
+
+
+def test_a_healthy_feed_prints_no_warning():
+    card = _card(source={"calendar_ok": True, "rss_ok": True})
+    assert "تعذّر جلب العناوين" not in card
+
+
 def test_the_mechanical_read_is_never_sold_as_an_edge():
     assert "لا يُدَّعى حافة" in _card()

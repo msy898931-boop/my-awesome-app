@@ -266,6 +266,16 @@ def format_news(news: dict) -> str:
             src = _esc(str(h.get("source") or ""))
             suffix = f" — {src}" if src else ""
             lines.append(f"  • {_esc(str(h.get('title')))}{suffix}")
+    # No headlines and the feeds were down: say so, rather than let an empty
+    # section read as "nothing happened in the world". With stale headlines
+    # shown, the reader still gets the news, but the age is flagged.
+    if not source.get("rss_ok", True):
+        age = " (بيانات قديمة)" if source.get("rss_stale") else ""
+        reason = _esc(str(source.get("rss_error") or "مصدر العناوين غير متاح"))
+        if headlines:
+            lines.append(f"_⚠️ العناوين قد تكون قديمة{age} — المصدر لم يستجب: {reason}_")
+        else:
+            lines += ["", f"⚠️ *تعذّر جلب العناوين*{age}", f"_المصدر لم يستجب: {reason}_"]
 
     lines += ["", NEWS_METHOD, "", ADVISORY]
     return "\n".join(lines)

@@ -169,5 +169,9 @@ def test_the_card_never_prints_a_bare_none_for_a_missing_forecast(monkeypatch):
 
 
 class _Rss:
+    ok = True
+    error = ""
+    stale = False
+
     def relevant(self, limit=8):
         return []

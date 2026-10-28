@@ -121,6 +121,9 @@ def digest(now: float | None = None) -> dict:
             "calendar_ok": calendar.ok,
             "calendar_error": calendar.error,
             "calendar_stale": calendar.stale,
+            "rss_ok": rss.ok,
+            "rss_error": rss.error,
+            "rss_stale": rss.stale,
         },
         "counts": {
             "high_impact_this_week": len(high),

@@ -47,9 +47,14 @@ class Bar:
             return None
 
     def is_sane(self) -> bool:
-        """A bar whose prices are ordered and finite. Junk is dropped, not repaired."""
+        """A bar whose prices are positive, ordered and finite. Junk is dropped,
+        not repaired."""
         prices = (self.open, self.high, self.low, self.close)
         if any(p != p or p in (float("inf"), float("-inf")) for p in prices):
+            return False
+        # A price is never zero or negative. A provider's empty seed row parses
+        # to 0.0, and letting it through poisons ATR and every structure level.
+        if any(p <= 0 for p in prices):
             return False
         return self.high >= max(self.open, self.close) and self.low <= min(self.open, self.close)
 

@@ -102,6 +102,20 @@ def test_binance_skips_malformed_rows(monkeypatch):
     assert len(series.bars) == 3
 
 
+def test_clean_bars_drops_a_zero_price_seed():
+    """A provider's empty seed row parses to 0.0; it must never reach structure.
+
+    ``clean_bars`` promises to drop the zero-price seed bar, and a zero price
+    would flatten ATR and every level computed from it. This pins that promise.
+    """
+    from goldbot.data.base import clean_bars
+    from goldbot.models import Bar
+
+    zero = Bar(time=1000, open=0.0, high=0.0, low=0.0, close=0.0, volume=0.0)
+    good = Bar(time=2000, open=4000.0, high=4010.0, low=3990.0, close=4005.0, volume=1.0)
+    assert [b.time for b in clean_bars([zero, good])] == [2000]
+
+
 class _StubProvider:
     """A provider that returns whatever it was told to, without any HTTP."""
 
