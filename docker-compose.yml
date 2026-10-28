@@ -1,0 +1,65 @@
+# Run GoldBot as a container, with the archive on a named volume so the
+# candles survive a restart.
+#
+# Secrets are read from the host environment (or a .env file that Compose
+# loads itself) and passed in at run time. Nothing sensitive is written into
+# this file, which is why it is safe to commit.
+#
+#   cp .env.example .env      # fill in TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GROQ_API_KEY
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# The bot is advisory only: it reads the market and sends a card. It has no
+# broker credentials and no order path.
+
+services:
+  goldbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: goldbot:local
+    container_name: goldbot
+    restart: unless-stopped
+
+    # Secrets and tunables come from the environment, never from the image.
+    # ``${VAR:-}`` means a missing value is an empty string rather than a
+    # Compose error, so the bot still starts and degrades (no key → no AI,
+    # no chat → it answers nobody) instead of refusing to boot.
+    environment:
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      GROQ_MODEL: "${GROQ_MODEL:-openai/gpt-oss-120b}"
+      GROQ_MAX_TOKENS: "${GROQ_MAX_TOKENS:-3000}"
+      GOLDBOT_SYMBOL: "${GOLDBOT_SYMBOL:-XAUUSD}"
+      GOLDBOT_TIMEFRAMES: "${GOLDBOT_TIMEFRAMES:-M5,M15,M30,H1,H4}"
+      GOLDBOT_POLL_SECONDS: "${GOLDBOT_POLL_SECONDS:-60}"
+      GOLDBOT_MIN_RR: "${GOLDBOT_MIN_RR:-2.0}"
+      GOLDBOT_ENABLE_MACRO: "${GOLDBOT_ENABLE_MACRO:-1}"
+      # A port turns on the health endpoint, which is also what the
+      # HEALTHCHECK below reads. Drop it for a pure background loop.
+      PORT: "8080"
+
+    ports:
+      # Bound to loopback: the health payload is non-sensitive, but there is
+      # no reason to publish it to the network for a single-host run.
+      - "127.0.0.1:8080:8080"
+
+    volumes:
+      - goldbot-archive:/data
+
+    # The bot needs almost nothing, so it is given almost nothing: a hard
+    # memory ceiling, a CPU share, and no ability to gain privileges.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  goldbot-archive:
