@@ -80,6 +80,9 @@ class Settings:
 
     min_rr: float = field(default_factory=lambda: _float("GOLDBOT_MIN_RR", 2.0))
     poll_seconds: float = field(default_factory=lambda: _float("GOLDBOT_POLL_SECONDS", 60.0))
+    # Commands that repeat inside this window reuse the last read, so a button
+    # pressed twice answers instantly instead of refetching the market.
+    cache_seconds: float = field(default_factory=lambda: _float("GOLDBOT_CACHE_SECONDS", 90.0))
 
     telegram_token: str = field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     telegram_chat: str = field(default_factory=lambda: os.environ.get("TELEGRAM_CHAT_ID", ""))

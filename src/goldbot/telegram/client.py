@@ -51,11 +51,14 @@ class Telegram:
     def me(self) -> dict:
         return self._call("getMe")
 
-    def send(self, chat_id: str, text: str, markdown: bool = True) -> bool:
+    def send(self, chat_id: str, text: str, markdown: bool = True,
+             keyboard: dict | None = None) -> bool:
         """Send a message, splitting on Telegram's 4096-character limit.
 
         A long analysis is sent in parts rather than truncated, because a
-        cut-off explanation is worse than two messages.
+        cut-off explanation is worse than two messages. When a keyboard is
+        given it is attached to the *last* part only, so the buttons land under
+        the final line instead of repeating after every chunk.
         """
         if not str(chat_id or "").strip():
             # Telegram answers this with a bare 400 and no clue; failing here
@@ -63,11 +66,14 @@ class Telegram:
             raise TelegramError("no chat id configured (TELEGRAM_CHAT_ID)")
         if not str(text or "").strip():
             raise TelegramError("refusing to send an empty message")
+        parts = _chunks(text, 4000)
         ok = True
-        for chunk in _chunks(text, 4000):
+        for index, chunk in enumerate(parts):
             payload: dict = {"chat_id": chat_id, "text": chunk, "disable_web_page_preview": True}
             if markdown:
                 payload["parse_mode"] = "Markdown"
+            if keyboard and index == len(parts) - 1:
+                payload["reply_markup"] = keyboard
             try:
                 self._call("sendMessage", payload)
             except TelegramError:
@@ -78,6 +84,46 @@ class Telegram:
                 except TelegramError:
                     ok = False
         return ok
+
+    def answer_callback(self, callback_id: str, text: str = "") -> bool:
+        """Clear the spinner on a pressed button.
+
+        Telegram keeps the button spinning until this lands, so it is called
+        the moment a callback arrives — before any work the answer needs.
+        """
+        if not str(callback_id or "").strip():
+            return False
+        payload: dict = {"callback_query_id": callback_id}
+        if text:
+            payload["text"] = text
+        try:
+            self._call("answerCallbackQuery", payload)
+            return True
+        except TelegramError:
+            return False
+
+    def typing(self, chat_id: str) -> bool:
+        """Show the typing indicator, so a slow read still feels alive."""
+        if not str(chat_id or "").strip():
+            return False
+        try:
+            self._call("sendChatAction", {"chat_id": chat_id, "action": "typing"})
+            return True
+        except TelegramError:
+            return False
+
+    def set_commands(self, commands: list[tuple[str, str]]) -> bool:
+        """Publish the ``/`` command menu for the default scope."""
+        if not commands:
+            return False
+        payload = {
+            "commands": [{"command": c, "description": d} for c, d in commands]
+        }
+        try:
+            self._call("setMyCommands", payload)
+            return True
+        except TelegramError:
+            return False
 
     def updates(self, offset: int | None = None, timeout: int = 0) -> list[dict]:
         payload: dict = {"timeout": timeout}

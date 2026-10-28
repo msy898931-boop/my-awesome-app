@@ -56,8 +56,24 @@ class Pipeline:
         self.settings = settings
         self.feed = feed or build_feed(settings)
         self.analyst = Analyst(settings)
+        # A command that repeats within the window reuses the last read. The
+        # market does not move in seconds, and a trader pressing /حالة twice
+        # should not pay two network round-trips plus an AI call for it.
+        self._cache: dict[tuple[bool, bool], tuple[float, Result]] = {}
 
-    def run(self, with_ai: bool = True, with_news: bool = True) -> Result:
+    def run(self, with_ai: bool = True, with_news: bool = True,
+            max_age: Optional[float] = None) -> Result:
+        key = (with_ai, with_news)
+        age = self.settings.cache_seconds if max_age is None else max_age
+        cached = self._cache.get(key)
+        if cached and age > 0 and (time.time() - cached[0]) < age:
+            return cached[1]
+
+        result = self._read(with_ai=with_ai, with_news=with_news)
+        self._cache[key] = (time.time(), result)
+        return result
+
+    def _read(self, with_ai: bool, with_news: bool) -> Result:
         now = int(time.time())
         result = Result(generated_at=now, symbol=self.settings.symbol)
 
