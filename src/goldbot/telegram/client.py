@@ -30,14 +30,15 @@ class Telegram:
         self.token = token
         self.timeout = timeout
 
-    def _call(self, method: str, payload: dict | None = None) -> dict:
+    def _call(self, method: str, payload: dict | None = None,
+              timeout: float | None = None) -> dict:
         url = API.format(token=self.token, method=method)
         data = json.dumps(payload or {}).encode()
         req = urllib.request.Request(
             url, data=data, headers={"Content-Type": "application/json"}, method="POST"
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
                 body = json.loads(resp.read())
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]
@@ -126,11 +127,18 @@ class Telegram:
             return False
 
     def updates(self, offset: int | None = None, timeout: int = 0) -> list[dict]:
+        """Fetch pending updates. A positive ``timeout`` long-polls server-side.
+
+        The HTTP timeout is raised above the long-poll window, otherwise the
+        socket closes before Telegram has a chance to answer and every poll
+        looks like a network failure.
+        """
         payload: dict = {"timeout": timeout}
         if offset is not None:
             payload["offset"] = offset
+        http_timeout = max(self.timeout, timeout + 10)
         try:
-            result = self._call("getUpdates", payload)
+            result = self._call("getUpdates", payload, timeout=http_timeout)
         except TelegramError:
             return []
         return result if isinstance(result, list) else []

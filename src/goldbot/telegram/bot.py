@@ -22,7 +22,9 @@ from .format import format_analysis, format_news, format_plan
 
 HELP = (
     "🥇 *بوت الذهب — SMC/ICT*\n\n"
-    "اضغط زراً من الأزرار تحت، أو اكتب الأمر:\n"
+    "⌨️ *لوحة التحكم أسفل الشاشة* — الأزرار ثابتة هناك، اضغط أي زر في أي وقت:\n"
+    "📊 التحليل · 🎯 الصفقة · 📰 الأخبار · 📈 الحالة · 🔄 تحديث · ⚙️ الإعدادات\n\n"
+    "أو اكتب الأمر:\n"
     "/analyse — قراءة SMC/ICT الكاملة لكل فريم\n"
     "/plan — آخر صفقة أو حالة السوق الآن\n"
     "/news — التقويم الاقتصادي والعناوين\n"
@@ -54,6 +56,55 @@ MENU: list[list[tuple[str, str]]] = [
     [("🔄 تحديث", "refresh"), ("⚙️ الإعدادات", "settings")],
 ]
 
+# The persistent panel pinned to the bottom of the chat. A *reply* keyboard,
+# not an inline one: it stays on screen while the trader scrolls, so a button
+# is never lost inside an old card. Each button sends its own text, and the
+# leading emoji is what ``_respond`` maps back to a command, so this list and
+# MENU must keep the same emoji heads.
+REPLY_MENU: list[list[str]] = [
+    ["📊 التحليل", "🎯 الصفقة"],
+    ["📰 الأخبار", "📈 الحالة"],
+    ["🔄 تحديث", "⚙️ الإعدادات"],
+]
+
+PANEL_HINT = "⌨️ لوحة التحكم أسفل الشاشة — اضغط أي زر في أي وقت."
+
+# Older releases used the leading emoji itself as the callback data. Telegram
+# keeps those keyboards on every message already in the chat, so a tap on an
+# old card still arrives here as "🔄" and used to dead-end on "أمر غير معروف".
+# The map is derived from MENU rather than hand-written, so it can never drift.
+_VARIATION_SELECTOR = "\ufe0f"
+
+
+def _legacy_aliases() -> dict[str, str]:
+    """Map a label, its leading emoji, and their VS16-stripped forms to a command."""
+    aliases: dict[str, str] = {}
+    for label, data in (b for row in MENU for b in row):
+        head = label.split(" ", 1)[0]
+        for key in (label, head):
+            for form in (key, key.replace(_VARIATION_SELECTOR, "")):
+                if form:
+                    aliases[form] = data
+    return aliases
+
+
+LEGACY_ALIASES: dict[str, str] = _legacy_aliases()
+
+
+def resolve_data(raw: str) -> str:
+    """Normalise a button payload or typed command to a canonical command.
+
+    Emoji payloads from pre-existing keyboards are translated here, and the
+    emoji variation selector (U+FE0F) is dropped, because Telegram may or may
+    not include it — ``⚙️`` and ``⚙`` must both resolve.
+    """
+    key = (raw or "").strip()
+    if not key:
+        return key
+    return LEGACY_ALIASES.get(key) or LEGACY_ALIASES.get(
+        key.replace(_VARIATION_SELECTOR, "")
+    ) or key
+
 
 # Settings the user may change from the bot, and where each is remembered on
 # the instance. The value is written to the state file only once it is set,
@@ -68,6 +119,21 @@ def menu_keyboard() -> dict:
             [{"text": label, "callback_data": data} for label, data in row]
             for row in MENU
         ]
+    }
+
+
+def reply_keyboard() -> dict:
+    """The persistent panel pinned to the bottom of the chat.
+
+    ``is_persistent`` keeps it on screen after a message is sent, and
+    ``resize_keyboard`` stops it from swallowing half the screen. It is set
+    once and stays for the chat, so the trader always has a button in reach
+    instead of scrolling back to an old card.
+    """
+    return {
+        "keyboard": [[{"text": label} for label in row] for row in REPLY_MENU],
+        "resize_keyboard": True,
+        "is_persistent": True,
     }
 
 
@@ -200,14 +266,30 @@ class Bot:
             self._last_key = key
             self._save()
             text = format_plan(result.plan, result.analysis, result.news)
-            self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
-            self._log(f"أُرسلت فكرة — {(result.plan or {}).get('direction', '?')}")
+            try:
+                ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
+            except TelegramError as exc:
+                self._log(f"فشل إرسال فكرة ({exc})")
+                return result
+            # The send result decides the log line: an unconditional "sent"
+            # once made a rejected push look delivered.
+            if ok:
+                self._log(f"أُرسلت فكرة — {(result.plan or {}).get('direction', '?')}")
+            else:
+                self._log("فشل إرسال فكرة (رفض تيليجرام)")
         return result
 
     # ── commands ─────────────────────────────────────────────────────────
 
-    def handle_updates(self) -> None:
-        updates = self.tg.updates(self._last_offset)
+    def handle_updates(self, timeout: int = 0) -> None:
+        """Drain pending updates. ``timeout`` > 0 makes the call long-poll.
+
+        Long polling is what makes a button feel instant: ``getUpdates`` blocks
+        until something arrives instead of the loop only looking once per
+        ``poll_seconds``. Without it a press could sit unseen for a full minute
+        and the bot looked dead.
+        """
+        updates = self.tg.updates(self._last_offset, timeout=timeout)
         for update in updates:
             self._last_offset = update.get("update_id", 0) + 1
             callback = update.get("callback_query")
@@ -230,7 +312,7 @@ class Bot:
         otherwise look like a hung bot.
         """
         callback_id = str(callback.get("id", ""))
-        data = str(callback.get("data", ""))
+        data = resolve_data(str(callback.get("data", "")))
         chat_id = str(((callback.get("message") or {}).get("chat") or {}).get("id", ""))
         if not chat_id:
             self.tg.answer_callback(callback_id)
@@ -247,6 +329,7 @@ class Bot:
             if callback_id:
                 self.tg.answer_callback(callback_id)
             self.tg.send(chat_id, HELP, keyboard=menu_keyboard())
+            self.tg.send(chat_id, PANEL_HINT, markdown=False, keyboard=reply_keyboard())
             return
         if data == "settings" or data.startswith("tf:") or data.startswith("sens:"):
             body, keyboard, toast = self._settings_screen(data)
@@ -278,6 +361,11 @@ class Bot:
             else:
                 body = "أمر غير معروف. اضغط زراً من الأزرار تحت."
             self.tg.send(chat_id, body, keyboard=menu_keyboard())
+            # Re-pin the panel whenever the help text is shown, so a fresh
+            # /start always leaves a button within reach.
+            if data in {"start", "help", "مساعدة"}:
+                self.tg.send(chat_id, PANEL_HINT, markdown=False,
+                             keyboard=reply_keyboard())
         except TelegramError:
             pass
 
@@ -343,7 +431,7 @@ class Bot:
             "إعدادات": "settings", "اعدادات": "settings", "settings": "settings",
             "menu": "menu", "قائمة": "menu",
         }
-        self._answer(chat_id, aliases.get(command, command))
+        self._answer(chat_id, resolve_data(aliases.get(command, command)))
 
     # ── loop ─────────────────────────────────────────────────────────────
 
@@ -370,18 +458,55 @@ class Bot:
         except TelegramError:
             pass
 
+    def install_panel(self) -> bool:
+        """Put the persistent panel at the bottom of the configured chat.
+
+        Sent once at start so the buttons exist before the first card. A failure
+        is logged, not fatal: the panel is a convenience, and the loop must
+        still run without it.
+        """
+        if not str(self.chat_id or "").strip():
+            self._log("لا يوجد TELEGRAM_CHAT_ID — بلا لوحة تحكم")
+            return False
+        try:
+            ok = self.tg.send(self.chat_id, PANEL_HINT, markdown=False,
+                              keyboard=reply_keyboard())
+        except TelegramError as exc:
+            self._log(f"تعذّر إنشاء لوحة التحكم ({exc})")
+            return False
+        if ok:
+            self._log("لوحة التحكم جاهزة أسفل الشاشة")
+        return ok
+
     def run_forever(self) -> None:
-        """Poll commands, then the market, then sleep. Runs until interrupted."""
+        """Poll commands, then the market, then sleep. Runs until interrupted.
+
+        The two cadences are separated. ``getUpdates`` long-polls, so a button
+        press is answered within a second; the market cycle keeps its own
+        ``poll_seconds`` interval and is not re-run for every update. The old
+        single-sleep loop only looked for input once a minute, which is why a
+        press could sit unanswered long enough to look broken.
+        """
         self._start_health()
         self._register_commands()
+        self.install_panel()
         self._log(f"البوت يعمل — كل {self.settings.poll_seconds} ثانية")
         cycle = 0
+        next_cycle = 0.0
+        # Below Telegram's own ~50s ceiling on getUpdates, so the call returns
+        # regularly and the loop still notices a stop.
+        long_poll = max(1, min(30, int(self.settings.poll_seconds)))
         while True:
-            cycle += 1
             try:
-                self.handle_updates()
+                self.handle_updates(timeout=long_poll)
             except TelegramError as exc:
                 self._log(f"تحديثات: فشل ({exc})")
+                time.sleep(2)
+
+            if time.monotonic() < next_cycle:
+                continue
+
+            cycle += 1
             try:
                 self.tick()
                 self._cycles = cycle
@@ -390,7 +515,7 @@ class Bot:
             except Exception as exc:
                 # A bad cycle must not kill the loop; the next one may be fine.
                 self._log(f"دورة {cycle}: خطأ ({type(exc).__name__}: {exc})")
-            time.sleep(self.settings.poll_seconds)
+            next_cycle = time.monotonic() + max(1.0, self.settings.poll_seconds)
 
     def _start_health(self) -> None:
         """Open the health port when the host provides one (Render, Fly, Heroku).

@@ -136,9 +136,35 @@ exactly as it does without the module.
 - Secrets (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GROQ_API_KEY`) are set
   in the dashboard and never committed
 
-**Free-tier caveat:** Render sleeps a free web service after 15 minutes of
-inactivity, which stops the market poll. Point a pinger at `/health` every ten
-minutes to keep it awake. A paid background worker avoids the caveat entirely.
+### Keeping a free web service awake
+
+Render spins a Free web service down after 15 minutes without inbound traffic,
+which stops the market poll. Two facts drive the setup:
+
+- The workspace gets **750 free instance hours per month**. Running 24/7 for a
+  31-day month is 744 hours — almost no headroom, and exhausting them suspends
+  *every* free service in the workspace until the next month.
+- Gold trades 24/5, so the weekend needs no poll.
+
+So the pinger runs **Monday to Friday only** (`.github/workflows/keepalive.yml`,
+every 10 minutes). That is about 516 hours a month, comfortably inside the
+budget, and the bot simply re-primes when the service spins back up.
+
+Set the endpoint once, then the workflow finds it:
+
+1. Render dashboard → your service → copy its URL, e.g.
+   `https://goldbot.onrender.com`
+2. GitHub → repository → **Settings → Secrets and variables → Actions →
+   Variables** → new variable `RENDER_HEALTH_URL` =
+   `https://goldbot.onrender.com/health`
+3. The scheduled workflow pings it; use **Actions → keepalive → Run workflow**
+   to test it immediately.
+
+Any external monitor (cron-job.org, UptimeRobot) works the same way if you
+prefer not to use Actions — point it at `/health` every ten minutes.
+
+**A paid background worker removes the caveat entirely:** change the service to
+`type: worker` and a paid plan, drop `healthCheckPath`, and no pinger is needed.
 
 ---
 

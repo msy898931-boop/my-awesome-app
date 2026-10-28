@@ -276,3 +276,180 @@ def test_arabic_settings_and_refresh_commands_work():
         rec.sent.clear()
         bot._respond("999", f"/{arabic}")
         assert len(rec.sent) == 1, arabic
+
+
+# ── legacy emoji payloads from older keyboards ──────────────────────────
+
+
+def test_emoji_payloads_from_old_keyboards_resolve_to_commands():
+    from goldbot.telegram.bot import resolve_data
+
+    # Telegrams already in the chat carry a keyboard whose callback data is the
+    # emoji itself; those taps must not dead-end on "أمر غير معروف".
+    assert resolve_data("🔄") == "refresh"
+    assert resolve_data("⚙️") == "settings"
+    assert resolve_data("⚙") == "settings"  # VS16 may be absent
+    assert resolve_data("📊") == "analyse"
+    assert resolve_data("🎯") == "plan"
+    assert resolve_data("📰") == "news"
+    assert resolve_data("📈") == "status"
+
+
+def test_resolve_data_leaves_canonical_and_unknown_values_alone():
+    from goldbot.telegram.bot import resolve_data
+
+    for value in ("analyse", "refresh", "tf:H4", "sens:2.0", "no-such-thing", ""):
+        assert resolve_data(value) == value
+
+
+def test_pressing_an_old_emoji_button_still_renders_a_card():
+    from goldbot.telegram.bot import MENU
+
+    for _, data in [x for row in MENU for x in row]:
+        emoji = next(label.split(" ", 1)[0] for label, d in
+                     [x for row in MENU for x in row] if d == data)
+        rec = _Recorder()
+        bot = _bot(rec)
+        bot._handle_callback(
+            {"id": "CB", "data": emoji, "message": {"chat": {"id": "999"}}}
+        )
+        assert len(rec.sent) == 1, emoji
+        _, text, keyboard = rec.sent[0]
+        assert "غير معروف" not in text, emoji
+        assert keyboard is not None, emoji
+
+
+def test_a_failed_push_is_logged_as_a_failure(monkeypatch):
+    """An unconditional "sent" log once made a rejected push look delivered."""
+    from goldbot.config import Settings
+    from goldbot.telegram.bot import Bot
+
+    class _Failing:
+        def send(self, *a, **k):
+            return False
+
+        def updates(self, offset=None, timeout=0):
+            return []
+
+        def answer_callback(self, *a, **k):
+            return True
+
+        def typing(self, *a, **k):
+            return True
+
+        def set_commands(self, *a, **k):
+            return True
+
+    lines: list[str] = []
+    bot = Bot(Settings(), state_path=os.path.join(tempfile.mkdtemp(), "s.json"),
+              tg=_Failing())
+    bot._log = lines.append  # type: ignore[method-assign]
+    bot._primed = True
+    bot._last_key = "different"
+    bot.tick(with_ai=False)
+    assert any("فشل" in line for line in lines), lines
+    assert not any("أُرسلت فكرة" in line for line in lines), lines
+
+
+# ── long polling ────────────────────────────────────────────────────────
+
+
+def test_long_poll_raises_the_http_timeout_past_the_poll_window(monkeypatch):
+    """The socket must outlive the server-side long poll, or every poll fails."""
+    import urllib.request
+
+    from goldbot.telegram.client import Telegram
+
+    seen: dict = {}
+
+    class _Resp:
+        status = 200
+
+        def read(self):
+            return b'{"ok": true, "result": []}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        seen["timeout"] = timeout
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    Telegram("123:abc").updates(None, timeout=30)
+    assert seen["timeout"] >= 40
+
+
+def test_handle_updates_forwards_the_long_poll_timeout():
+    rec = _Recorder()
+    seen: list[int] = []
+    rec.updates = lambda offset=None, timeout=0: (seen.append(timeout), [])[1]
+    bot = _bot(rec)
+    bot.handle_updates(timeout=25)
+    assert seen == [25]
+
+
+# ── persistent bottom panel ─────────────────────────────────────────────
+
+
+def test_reply_panel_is_a_persistent_bottom_keyboard():
+    from goldbot.telegram.bot import reply_keyboard
+
+    kb = reply_keyboard()
+    assert "keyboard" in kb and "inline_keyboard" not in kb
+    assert kb["is_persistent"] is True
+    assert kb["resize_keyboard"] is True
+    labels = [b["text"] for row in kb["keyboard"] for b in row]
+    assert len(labels) == 6
+
+
+def test_every_panel_button_maps_to_a_known_command():
+    """A panel button sends its label as text; it must not dead-end."""
+    from goldbot.telegram.bot import REPLY_MENU, resolve_data
+
+    known = {"analyse", "plan", "news", "status", "refresh", "settings"}
+    for row in REPLY_MENU:
+        for label in row:
+            head = label.split()[0]
+            assert resolve_data(head) in known, label
+
+
+def test_panel_buttons_render_cards_like_the_menu():
+    from goldbot.telegram.bot import REPLY_MENU
+
+    for row in REPLY_MENU:
+        for label in row:
+            rec = _Recorder()
+            bot = _bot(rec)
+            bot._respond("999", label)
+            assert len(rec.sent) >= 1, label
+            _, text, keyboard = rec.sent[0]
+            assert "غير معروف" not in text, label
+            assert keyboard is not None, label
+
+
+def test_install_panel_sends_the_bottom_keyboard_to_the_configured_chat():
+    from goldbot.config import Settings
+    from goldbot.telegram.bot import Bot
+
+    rec = _Recorder()
+    bot = Bot(Settings(telegram_chat="555"), state_path=os.path.join(
+        tempfile.mkdtemp(), "s.json"), tg=rec)
+    assert bot.install_panel() is True
+    chat_id, _, keyboard = rec.sent[0]
+    assert chat_id == "555"
+    assert "keyboard" in keyboard
+
+
+def test_install_panel_without_a_chat_id_is_not_fatal():
+    from goldbot.config import Settings
+    from goldbot.telegram.bot import Bot
+
+    rec = _Recorder()
+    bot = Bot(Settings(telegram_chat=""), state_path=os.path.join(
+        tempfile.mkdtemp(), "s.json"), tg=rec)
+    assert bot.install_panel() is False
+    assert rec.sent == []

@@ -1,0 +1,51 @@
+name: keepalive
+
+# Render spins a Free web service down after 15 minutes without inbound
+# traffic, which would stop the market poll. This pings the health endpoint so
+# the service stays awake.
+#
+# It runs Monday-Friday only, on purpose. Gold trades 24/5, so the weekend needs
+# no poll, and staying dark then keeps the workspace well under Render's 750
+# free instance hours per month (5 x 24h is ~516h; 24/7 would be ~744h, leaving
+# almost no headroom before Render suspends every free service in the account).
+
+on:
+  schedule:
+    - cron: "*/10 * * * 1-5"
+  workflow_dispatch: {}
+
+# A slow run must not overlap the next one and double the traffic.
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the Render health endpoint
+        env:
+          # Set this as a repository variable (Settings > Secrets and variables
+          # > Actions > Variables), e.g. https://goldbot.onrender.com/health
+          HEALTH_URL: ${{ vars.RENDER_HEALTH_URL }}
+        run: |
+          set -u
+          if [ -z "${HEALTH_URL:-}" ]; then
+            echo "RENDER_HEALTH_URL is not set; nothing to ping."
+            exit 1
+          fi
+          # Three tries: the first request may be what wakes a spun-down
+          # service, which takes about a minute.
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" \
+              --max-time 60 --retry 2 --retry-delay 5 "$HEALTH_URL" || echo 000)
+            echo "attempt $attempt -> HTTP $code"
+            cat /tmp/health.json 2>/dev/null || true
+            echo
+            if [ "$code" = "200" ]; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "health endpoint did not return 200"
+          exit 1

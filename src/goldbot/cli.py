@@ -49,12 +49,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "send":
+        from .telegram.bot import menu_keyboard
         from .telegram.client import Telegram, TelegramError
 
         result = Pipeline(settings).run(with_ai=not args.no_ai, with_news=not args.no_news)
         tg = Telegram(settings.telegram_token)
         try:
-            ok = tg.send(settings.telegram_chat, format_plan(result.plan, result.analysis, result.news))
+            ok = tg.send(
+                settings.telegram_chat,
+                format_plan(result.plan, result.analysis, result.news),
+                keyboard=menu_keyboard(),
+            )
         except TelegramError as exc:
             print(f"فشل الإرسال ❌ — {exc}")
             return 1
