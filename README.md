@@ -146,22 +146,29 @@ which stops the market poll. Two facts drive the setup:
   *every* free service in the workspace until the next month.
 - Gold trades 24/5, so the weekend needs no poll.
 
-So the pinger runs **Monday to Friday only** (`.github/workflows/keepalive.yml`,
-every 10 minutes). That is about 516 hours a month, comfortably inside the
-budget, and the bot simply re-primes when the service spins back up.
+**The service guards itself.** Render exposes the service's own public URL as
+`RENDER_EXTERNAL_URL`, and `goldbot.health` pings it every 10 minutes. That
+request is inbound traffic, so the idle timer never expires. This is the
+reliable path: a GitHub Actions `schedule` is best-effort and can be delayed
+well past the 15-minute window, so it is only a backup for the case where the
+process is wedged and its own ping thread is dead with it.
 
-Set the endpoint once, then the workflow finds it:
+`RENDER_HEALTH_URL` remains useful for that backup workflow, and for any
+external monitor (cron-job.org, UptimeRobot) pointed at `/health`:
 
 1. Render dashboard → your service → copy its URL, e.g.
    `https://goldbot.onrender.com`
 2. GitHub → repository → **Settings → Secrets and variables → Actions →
    Variables** → new variable `RENDER_HEALTH_URL` =
    `https://goldbot.onrender.com/health`
-3. The scheduled workflow pings it; use **Actions → keepalive → Run workflow**
-   to test it immediately.
+3. Optionally test it: **Actions → keepalive → Run workflow**.
 
-Any external monitor (cron-job.org, UptimeRobot) works the same way if you
-prefer not to use Actions — point it at `/health` every ten minutes.
+The keepalive workflow runs **Monday to Friday only**, every 5 minutes: about
+516 hours a month, comfortably inside the 750-hour budget.
+
+The caveat that remains is Render's own: it "might restart a Free web service at
+any time". A restart loses local files (the archive, `run/bot_state.json`), and
+the bot re-primes without replaying alerts — so a restart is silent, not noisy.
 
 **A paid background worker removes the caveat entirely:** change the service to
 `type: worker` and a paid plan, drop `healthCheckPath`, and no pinger is needed.

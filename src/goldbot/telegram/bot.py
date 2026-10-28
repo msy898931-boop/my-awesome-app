@@ -531,12 +531,24 @@ class Bot:
         except ValueError:
             self._log(f"PORT غير صالح ({raw!r}) — بدون منفذ صحة")
             return
-        from ..health import start_health_server
+        from ..health import SELF_PING_SECONDS, start_health_server, start_self_ping
 
         self._started_at = time.time()
         self._cycles = 0
         start_health_server(port, self.health_status)
         self._log(f"منفذ الصحة يعمل على {port}")
+
+        # Render hands the service its own public URL. Pinging it is what keeps
+        # a Free instance from being spun down after 15 idle minutes; relying on
+        # an external cron proved unreliable, so the service guards itself.
+        external = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+        if external:
+            start_self_ping(external)
+            self._log(f"منبّه ذاتي كل {int(SELF_PING_SECONDS)} ثانية ({external})")
+        else:
+            # Say so out loud: a missing URL means the service will idle out
+            # after 15 minutes, and a silent skip would look like a healthy run.
+            self._log("لا يوجد RENDER_EXTERNAL_URL — بلا منبّه ذاتي")
 
     def health_status(self) -> dict:
         return {

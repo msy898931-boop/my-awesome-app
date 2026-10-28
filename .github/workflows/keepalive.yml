@@ -1,8 +1,13 @@
 name: keepalive
 
 # Render spins a Free web service down after 15 minutes without inbound
-# traffic, which would stop the market poll. This pings the health endpoint so
-# the service stays awake.
+# traffic, which would stop the market poll.
+#
+# The service now guards itself: it pings its own public URL every 10 minutes
+# (see ``goldbot/health.py``). That is the reliable path, because a GitHub
+# ``schedule`` is best-effort and may be delayed past the 15-minute window.
+# This workflow is the backup for the case where the process is wedged and the
+# self-ping thread is dead with it.
 #
 # It runs Monday-Friday only, on purpose. Gold trades 24/5, so the weekend needs
 # no poll, and staying dark then keeps the workspace well under Render's 750
@@ -11,7 +16,7 @@ name: keepalive
 
 on:
   schedule:
-    - cron: "*/10 * * * 1-5"
+    - cron: "*/5 * * * 1-5"
   workflow_dispatch: {}
 
 # A slow run must not overlap the next one and double the traffic.
