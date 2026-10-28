@@ -7,6 +7,33 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **A container image (`Dockerfile`, `docker-compose.yml`).** Two stages: a
+  wheel is built, then installed into a runtime that carries only the
+  interpreter and the package — no build toolchain, no pip cache. The process
+  runs as an unprivileged user (`uid 10001`) with a read-only root filesystem,
+  no privilege escalation, a memory ceiling, and the archive on a named volume
+  so a restart no longer loses the accumulated candles. A `HEALTHCHECK` reads
+  the same `/health` endpoint a host would. No secret is baked into any layer;
+  the token, chat id and Groq key are injected at run time.
+- **A Docker job in CI.** The image is built on every change, started with a
+  throwaway token, and the job fails unless the container answers its own
+  health endpoint and does not run as root — so a broken build is caught before
+  a deploy rather than at one.
+- **`PORTFOLIO.md`**, an engineering narrative: the decisions and the
+  measurements behind them, written for someone reading the repository to judge
+  the work rather than to run the bot.
+- **`docs/ARCHITECTURE.md`**, a data-flow and module map with the invariants the
+  tests defend.
+- **`starter/` — `goldkit`, the reusable patterns extracted and tested.** Four
+  pieces, each the fix to a bug that shipped: `Result` (data that carries its own
+  `ok`/`error`/`stale`, truthy on health not content), `Leg` (a cached source
+  with an honest freshness test and a retry gate set to an absolute deadline),
+  `ResilientSource` (several legs, `ok` only when all answered), and
+  `http.guarded_url` / `read_capped` (the scheme guard and a body-size cap). 20
+  tests pin the refusals, and the kit is checked, typed and covered by the same
+  gate as the project it came from.
+- A `make docker` / `make docker-run` target, and `GOLDBOT_ENABLE_MACRO` added
+  to `.env.example` (it was missing).
 - **A macro context layer (`news/macro.py`), stated as context and never as a
   signal.** The bot now reads the dollar and the real yield from two keyless
   sources — FRED's CSV (`DFII10`, `DTWEXBGS`, `T10YIE`) and `EURUSDT` from the
@@ -84,6 +111,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   had none) and `config.py` (the `.env` parser and the coercion helpers).
 
 ### Changed
+- The coverage floor now applies to `goldkit` as well as `goldbot`; the
+  total stays 96% (539 tests including the starter kit's).
 - `news/rss.py` refuses an oversized body and any document carrying a
   `DOCTYPE`/`ENTITY` declaration before parsing it, the stdlib-only defence
   against entity-expansion attacks. Verified against all three live feeds,
