@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 
 from .config import load_settings
@@ -79,6 +80,13 @@ def main(argv: list[str] | None = None) -> int:
         if not settings.telegram_token:
             print("لا يوجد TELEGRAM_BOT_TOKEN")
             return 1
+        # The loop reports through ``logging``; give it a readable one-line
+        # format on stderr so a host's log view stays legible.
+        logging.basicConfig(
+            level=logging.INFO,
+            format="[%(asctime)s] %(message)s",
+            datefmt="%H:%M:%S",
+        )
         Bot(settings).run_forever()
         return 0
 

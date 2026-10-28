@@ -3,14 +3,17 @@
 The loop's discipline is what makes it usable. On the first pass it seeds its
 state from whatever is already on the board and sends nothing — a restart must
 never replay the day's alerts. After that it sends a card only when the plan's
-identity changes, where identity is direction plus the three levels. A plan
-that merely wobbles by a tick is the same idea, and repeating it is noise.
+identity changes, where identity is the direction plus the setup. A plan that
+merely wobbles by a tick is the same idea, and repeating it is noise. During a
+high-impact blackout the idea is withheld and remembered, then delivered once
+the window closes.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import time
 from dataclasses import replace
@@ -19,6 +22,8 @@ from ..config import Settings
 from ..pipeline import Pipeline, Result
 from .client import Telegram, TelegramError
 from .format import format_analysis, format_news, format_plan, format_price
+
+log = logging.getLogger("goldbot")
 
 HELP = (
     "🥇 *بوت الذهب — SMC/ICT*\n\n"
@@ -625,5 +630,4 @@ class Bot:
         }
 
     def _log(self, message: str) -> None:
-        stamp = time.strftime("%H:%M:%S")
-        print(f"[{stamp}] {message}", flush=True)
+        log.info("%s", message)

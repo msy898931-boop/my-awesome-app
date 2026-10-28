@@ -128,7 +128,12 @@ feeding it, the archive is deep immediately, which makes the research scripts
 
 ## Tests
 
+The suite is offline: `tests/conftest.py` blocks every non-loopback socket, so
+a run is deterministic and a failure means the logic broke, not that a feed was
+down.
+
 ```bash
+make check                     # ruff + format + mypy + pytest (what CI runs)
 python -m pytest tests/ -q     # 172 tests
 ```
 
