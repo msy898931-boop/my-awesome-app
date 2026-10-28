@@ -23,6 +23,7 @@ class _Settings:
     min_rr = 2.0
     cache_seconds = 90
     groq_key = ""
+    enable_macro = True
 
 
 def _series(tf: str, source: str = "stub") -> Series:
@@ -82,7 +83,9 @@ def wired(monkeypatch):
     monkeypatch.setattr(pipeline_mod, "build_facts", lambda series, symbol, now: _Sheet())
     monkeypatch.setattr(pipeline_mod, "build_plan", lambda facts, min_rr: _Plan())
     monkeypatch.setattr(
-        pipeline_mod, "news_digest", lambda now: {"blackout": {"active": False}, "ok": True}
+        pipeline_mod,
+        "news_digest",
+        lambda now, with_macro=True: {"blackout": {"active": False}, "ok": True},
     )
 
     def _make(feed, analyst_raises=None):
@@ -145,7 +148,7 @@ def test_no_frame_at_all_short_circuits_with_a_reason(wired):
 
 
 def test_a_news_failure_is_captured_and_does_not_sink_the_read(wired, monkeypatch):
-    def _boom(now):
+    def _boom(now, with_macro=True):
         raise RuntimeError("calendar down")
 
     monkeypatch.setattr(pipeline_mod, "news_digest", _boom)

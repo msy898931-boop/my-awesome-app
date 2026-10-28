@@ -21,6 +21,7 @@ from __future__ import annotations
 import time
 
 from .calendar import CalendarFeed, Event
+from .macro import macro_context
 from .rss import RssFeed
 
 # Default blackout: 15 minutes before, 15 after.
@@ -75,13 +76,19 @@ def blackout(
     }
 
 
-def digest(now: float | None = None) -> dict:
-    """Assemble the full news picture: schedule, tape and blackout.
+def digest(now: float | None = None, with_macro: bool = True) -> dict:
+    """Assemble the full news picture: schedule, tape, blackout, and macro.
 
     Read-only and keyless. Every fetch failure degrades to an empty list, but it
     is *reported* in ``source`` so a rate-limited calendar cannot masquerade as a
     quiet one — the caller can always tell "no news" from "no feed" by the flags
     and the counts.
+
+    The macro leg is context, not news, and is included here because every card
+    already receives this dict: it carries which way the dollar and the real
+    yield lean, so a plan can be shown against the wind it is fighting. It is
+    never allowed to change a direction — see :mod:`goldbot.news.macro`.
+    ``with_macro=False`` omits it entirely for a purely price-based read.
     """
     now = now if now is not None else time.time()
     calendar, rss = _feeds()
@@ -108,9 +115,12 @@ def digest(now: float | None = None) -> dict:
     else:
         window = {**window, "checked": True}
 
+    macro = macro_context(now) if with_macro else {}
+
     return {
         "generated_at": int(now),
         "blackout": window,
+        "macro": macro,
         "upcoming": [
             {
                 "title": e.title,
@@ -134,6 +144,9 @@ def digest(now: float | None = None) -> dict:
             "rss_ok": rss.ok,
             "rss_error": rss.error,
             "rss_stale": rss.stale,
+            "macro_ok": bool(macro.get("checked")) and not macro.get("error"),
+            "macro_error": macro.get("error", ""),
+            "macro_stale": bool(macro.get("stale")),
         },
         "counts": {
             "high_impact_this_week": len(high),

@@ -1,11 +1,13 @@
-"""News engine — the calendar, the blackout window, and the gold read.
+"""News engine — the calendar, the blackout window, the gold read, the macro.
 
-Three things a gold trader needs before deciding, assembled from keyless public
+Four things a gold trader needs before deciding, assembled from keyless public
 sources:
 
   * the **blackout window** — is a high-impact release printing, or about to?
   * the **schedule** — what high-impact events are due, and how soon?
   * the **tape** — what just printed, and which way it mechanically leans for gold?
+  * the **macro** — which way the dollar and the real yield are leaning, stated
+    as context, never as a signal (see :mod:`goldbot.news.macro`).
 
 Honesty rules, carried deliberately from the reference project:
 
@@ -18,7 +20,19 @@ Honesty rules, carried deliberately from the reference project:
 """
 
 from .calendar import CalendarFeed, Event
+from .macro import MacroContext, alignment, combine_votes, macro_context
 from .rss import Headline, RssFeed
 from .window import blackout, digest
 
-__all__ = ["CalendarFeed", "Event", "RssFeed", "Headline", "blackout", "digest"]
+__all__ = [
+    "CalendarFeed",
+    "Event",
+    "RssFeed",
+    "Headline",
+    "blackout",
+    "digest",
+    "MacroContext",
+    "macro_context",
+    "combine_votes",
+    "alignment",
+]
