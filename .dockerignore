@@ -1,0 +1,50 @@
+# Keep the build context small and, more importantly, keep secrets out of it.
+# A .env copied into an image layer stays in that layer even if a later layer
+# deletes it, so the safest rule is that the context never contains one.
+
+# Secrets and local state — never in an image
+.env
+.env.*
+!.env.example
+
+# Version control and CI
+.git
+.gitignore
+.github
+
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime state and accumulated data
+.goldbot/
+run/
+*.log
+
+# Docs and dev-only material — not needed to build or run the package
+docs/
+tests/
+research/
+starter/
+CONTRIBUTING.md
+CHANGELOG.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

@@ -99,6 +99,30 @@ The settings module reads a `.env` file at startup if one exists. Real
 environment variables always win, so a shell-exported secret is never
 clobbered by a stale file. `.env` is gitignored; never commit it.
 
+### Docker
+
+The image is built in two stages and carries no secrets — the token, the chat
+id and the Groq key are injected at run time.
+
+```bash
+cp .env.example .env      # then fill in your values
+docker compose up -d --build
+docker compose logs -f
+```
+
+It runs as an unprivileged user with a read-only root filesystem, and the
+archive lives on a named volume so a restart does not lose the accumulated
+candles. A `HEALTHCHECK` reads the same `/health` endpoint the host does. For a
+single container without Compose:
+
+```bash
+docker build -t goldbot:local .
+docker run -d --name goldbot \
+  -e TELEGRAM_BOT_TOKEN -e TELEGRAM_CHAT_ID -e GROQ_API_KEY \
+  -e PORT=8080 -p 127.0.0.1:8080:8080 -v goldbot-archive:/data \
+  goldbot:local bot
+```
+
 ### Environment
 
 | Variable | Purpose |
@@ -152,12 +176,15 @@ down.
 ```bash
 make check                     # ruff + format + mypy + bandit + pip-audit + pytest
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 519 tests
+python -m pytest tests/ -q     # 519 tests for the bot
 ```
 
 CI runs the suite under `coverage` and **fails below a floor of 95%** of
 `src/goldbot` (measured 96% on the current revision, no module under 85%), so the
 number cannot drift away from the truth unnoticed.
+
+The extracted [starter kit](starter/README.md) carries its own tests, run by
+the same gate and counted in the same coverage floor.
 
 ---
 
@@ -176,6 +203,11 @@ exactly as it does without the module.
 - Health check: `/health`
 - Secrets (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GROQ_API_KEY`) are set
   in the dashboard and never committed
+
+A `Dockerfile` and `docker-compose.yml` are also included (see
+[Docker](#docker)) for any host that runs containers, or for running it
+locally. The image is built and started in CI on every change, so a broken
+build is caught before a deploy rather than at one.
 
 ### Keeping a free web service awake
 
@@ -232,8 +264,19 @@ src/goldbot/
   telegram/         client, formatting, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
+starter/            goldkit — the reusable patterns, extracted and tested
+docs/               architecture, data flow, module map
 tests/              519 tests
+Dockerfile          two-stage image, non-root, healthcheck
+docker-compose.yml  local run with the archive on a volume
 ```
+
+Two companion documents go deeper than this README:
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how a read flows from the
+  network to a card, module by module, and the invariants the tests defend.
+- **[PORTFOLIO.md](PORTFOLIO.md)** — the engineering decisions and the
+  measurements behind them, written for someone judging the work.
 
 ---
 
