@@ -28,7 +28,7 @@ security:
 	python -m bandit -c pyproject.toml -r src/goldbot
 
 audit:
-	python -m pip_audit
+	python -m pip_audit .
 
 test:
 	python -m pytest tests -q

@@ -8,9 +8,12 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - **Static security analysis and a dependency audit in CI.** `bandit` scans the
-  package and `pip-audit` checks every dependency against the advisory database;
-  both run on Python 3.10 and 3.12 and fail the build on a finding. `make check`
-  runs them too, so the gate is the same locally and on the runner.
+  package and `pip-audit` checks the project's own dependencies against the
+  advisory database; both run on Python 3.10 and 3.12 and fail the build on a
+  finding. `make check` runs them too, so the gate is the same locally and on
+  the runner. The audit is scoped to the project (`.`), not the whole
+  environment — auditing everything flags the runner's `setuptools` and
+  pip-audit's own transitive deps, which this project does not ship.
 - **Dependabot** (`.github/dependabot.yml`): weekly, grouped updates for the
   Python dev tooling and the pinned actions. The repo is public, so this is free
   — and a vulnerable pin now arrives as a PR rather than as a red audit with no

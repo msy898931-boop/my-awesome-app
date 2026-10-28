@@ -53,9 +53,12 @@ jobs:
         run: python -m bandit -c pyproject.toml -r src/goldbot
 
       - name: Dependency audit (pip-audit)
-        # The runtime has no third-party dependencies, which is the point — but
-        # a dependency added later must not arrive with a known CVE unnoticed.
-        run: python -m pip_audit
+        # Scoped to the project's own dependencies (`.`), not the whole
+        # environment: auditing everything would flag the runner's setuptools
+        # and pip-audit's own transitive deps, which this project does not
+        # ship. The runtime has no third-party dependencies today — the point
+        # of the gate is that one added later cannot arrive with a known CVE.
+        run: python -m pip_audit .
 
       - name: Test (pytest)
         run: python -m coverage run -m pytest tests -q
