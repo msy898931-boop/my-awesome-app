@@ -16,21 +16,32 @@ from goldbot.telegram.format import format_news
 
 
 def _released(title, actual, forecast, previous, ago_min, country="USD"):
-    event = Event(title=title, country=country, impact="high",
-                  time=time.time() - ago_min * 60,
-                  actual=_to_float(actual), forecast=_to_float(forecast),
-                  previous=_to_float(previous))
+    event = Event(
+        title=title,
+        country=country,
+        impact="high",
+        time=time.time() - ago_min * 60,
+        actual=_to_float(actual),
+        forecast=_to_float(forecast),
+        previous=_to_float(previous),
+    )
     return {**event.gold_read(), "in_minutes": round((event.time - time.time()) / 60.0, 1)}
 
 
 def _card(**over):
-    news = {"source": {"calendar_ok": True}, "blackout": {}, "upcoming": [],
-            "released": [], "headlines": []}
+    news = {
+        "source": {"calendar_ok": True},
+        "blackout": {},
+        "upcoming": [],
+        "released": [],
+        "headlines": [],
+    }
     news.update(over)
     return format_news(news)
 
 
 # ── the window ───────────────────────────────────────────────────────────
+
 
 def test_a_calm_window_says_so():
     assert "السوق خالٍ من الأخبار المهمة" in _card()
@@ -44,14 +55,19 @@ def test_a_failed_read_is_not_reported_as_calm():
 
 
 def test_an_active_window_names_the_event():
-    card = _card(blackout={"active": True, "imminent": [
-        {"title": "FOMC Statement", "country": "USD", "minutes": -1.0}]})
+    card = _card(
+        blackout={
+            "active": True,
+            "imminent": [{"title": "FOMC Statement", "country": "USD", "minutes": -1.0}],
+        }
+    )
     assert "نافذة خبر عالي التأثير الآن" in card
     assert "FOMC Statement" in card
     assert "السوق خالٍ" not in card
 
 
 # ── upcoming ─────────────────────────────────────────────────────────────
+
 
 def test_upcoming_shows_minutes_and_country():
     card = _card(upcoming=[{"title": "GDP", "country": "US", "in_minutes": 59.0}])
@@ -66,6 +82,7 @@ def test_minutes_are_never_shown_as_a_float():
 
 
 # ── released ─────────────────────────────────────────────────────────────
+
 
 def test_released_shows_actual_forecast_and_previous():
     card = _card(released=[_released("ثقة المستهلك", "91.7", "81", "84.2", 1)])
@@ -109,6 +126,7 @@ def test_a_non_us_release_is_labelled_indirect():
 
 
 # ── headlines and the honesty footer ─────────────────────────────────────
+
 
 def test_headlines_show_their_source():
     card = _card(headlines=[{"title": "Gold holds $4000", "source": "WSJ Markets"}])

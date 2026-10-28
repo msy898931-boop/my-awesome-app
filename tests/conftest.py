@@ -7,6 +7,7 @@ was down.
 
 from __future__ import annotations
 
+import socket
 import sys
 from pathlib import Path
 
@@ -16,9 +17,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from goldbot.models import Bar  # noqa: E402
 
+_LOOPBACK = {"127.0.0.1", "::1", "localhost", ""}
+_real_connect = socket.socket.connect
 
-def make_bars(prices: list[tuple[float, float, float, float]], start: int = 1_700_000_000,
-              step: int = 900) -> list[Bar]:
+
+def _guarded_connect(self, address, *args, **kwargs):
+    """Refuse any connection that leaves the machine.
+
+    The suite is meant to be deterministic, but ``Settings()`` builds a live
+    feed and the news digest fetches a calendar and RSS feeds, so a handful of
+    tests were quietly reading the real network — slow, flaky, and a lie about
+    what is under test. Loopback stays open because the health server test needs
+    a real socket on an ephemeral port.
+    """
+    host = address[0] if isinstance(address, tuple) else address
+    if host not in _LOOPBACK:
+        raise OSError(f"network access is blocked in tests: {address!r}")
+    return _real_connect(self, address, *args, **kwargs)
+
+
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch):
+    """Block outbound sockets and the retry sleep for every test."""
+    monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
+    # The AI back-off is 20 real seconds; a parked-model test would wait it out.
+    monkeypatch.setattr("goldbot.ai.analyst.RETRY_BACKOFF", 0)
+    yield
+
+
+def make_bars(
+    prices: list[tuple[float, float, float, float]], start: int = 1_700_000_000, step: int = 900
+) -> list[Bar]:
     """Bars from (open, high, low, close) tuples, stamped at a fixed interval."""
     return [
         Bar(time=start + i * step, open=o, high=h, low=lo, close=c, volume=100.0)
@@ -59,8 +88,9 @@ def _leg(price: float, step: float, bars: int) -> tuple[list[tuple], float]:
     return out, price
 
 
-def _zigzag(start: float, up_bars: int, up_step: float, down_bars: int,
-            down_step: float, legs: int) -> list[Bar]:
+def _zigzag(
+    start: float, up_bars: int, up_step: float, down_bars: int, down_step: float, legs: int
+) -> list[Bar]:
     """Alternating impulse and pullback legs — the shape that actually produces
     fractal pivots, and therefore structure events."""
     prices: list[tuple] = []

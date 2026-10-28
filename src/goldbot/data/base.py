@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from typing import Any, Optional
+from typing import Any
 
 from ..models import Bar, Series
 
@@ -35,7 +35,9 @@ def http_get_json(url: str, timeout: float = DEFAULT_TIMEOUT) -> Any:
     A non-200, a timeout, or malformed JSON all raise :class:`ProviderError`
     with the reason attached, so the feed can log *why* it moved on.
     """
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+    req = urllib.request.Request(
+        url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if resp.status != 200:
@@ -78,6 +80,6 @@ class Provider:
     def fetch(self, timeframe: str, bars: int) -> Series:  # pragma: no cover - interface
         raise NotImplementedError
 
-    def spot(self) -> Optional[float]:  # pragma: no cover - optional
+    def spot(self) -> float | None:  # pragma: no cover - optional
         """A latest price, when the provider can offer one cheaply."""
         return None

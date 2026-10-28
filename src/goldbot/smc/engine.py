@@ -9,8 +9,8 @@ reads this; the AI layer narrates it.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Optional, Sequence
 
 from ..models import Bar, Series
 from .primitives import ATR_PERIOD, atr, structure_events, swings
@@ -49,7 +49,8 @@ class FactSheet:
 
 # ── per-frame facts ──────────────────────────────────────────────────────
 
-def _premium_discount(bars: Sequence[Bar]) -> Optional[dict]:
+
+def _premium_discount(bars: Sequence[Bar]) -> dict | None:
     """Where price sits in the active leg: premium, equilibrium or discount.
 
     The leg is the range from the lowest low to the highest high over the
@@ -91,7 +92,7 @@ def _clusters(points: Sequence[tuple[int, float]], tol: float) -> list[dict]:
     return out
 
 
-def _liquidity(bars: Sequence[Bar], atr_value: Optional[float]) -> dict:
+def _liquidity(bars: Sequence[Bar], atr_value: float | None) -> dict:
     """Resting stop pools: equal highs (buy-side) and equal lows (sell-side)."""
     highs, lows = swings(bars)
     tol = (atr_value or 1.0) * EQUAL_TOL_ATR
@@ -120,21 +121,29 @@ def _sweeps(bars: Sequence[Bar]) -> list[dict]:
         for idx, price in highs:
             if idx < i and bar.high > price and bar.close < price:
                 out.append(
-                    {"side": "sell_side_taken", "level": round(price, 2),
-                     "time": bar.time, "index": i}
+                    {
+                        "side": "sell_side_taken",
+                        "level": round(price, 2),
+                        "time": bar.time,
+                        "index": i,
+                    }
                 )
                 break
         for idx, price in lows:
             if idx < i and bar.low < price and bar.close > price:
                 out.append(
-                    {"side": "buy_side_taken", "level": round(price, 2),
-                     "time": bar.time, "index": i}
+                    {
+                        "side": "buy_side_taken",
+                        "level": round(price, 2),
+                        "time": bar.time,
+                        "index": i,
+                    }
                 )
                 break
     return out[-6:]
 
 
-def _fair_value_gaps(bars: Sequence[Bar], atr_value: Optional[float]) -> list[dict]:
+def _fair_value_gaps(bars: Sequence[Bar], atr_value: float | None) -> list[dict]:
     """Three-bar imbalances: a gap between bar i-2's wick and bar i's wick.
 
     A bullish FVG is where bar i's low sits above bar i-2's high; the untraded
@@ -149,13 +158,25 @@ def _fair_value_gaps(bars: Sequence[Bar], atr_value: Optional[float]) -> list[di
         a, c = bars[i - 2], bars[i]
         if c.low > a.high and (c.low - a.high) >= floor:
             out.append(
-                {"side": "bullish", "top": round(c.low, 2), "bottom": round(a.high, 2),
-                 "time": bars[i - 1].time, "index": i, "filled": bars[-1].low <= a.high}
+                {
+                    "side": "bullish",
+                    "top": round(c.low, 2),
+                    "bottom": round(a.high, 2),
+                    "time": bars[i - 1].time,
+                    "index": i,
+                    "filled": bars[-1].low <= a.high,
+                }
             )
         elif c.high < a.low and (a.low - c.high) >= floor:
             out.append(
-                {"side": "bearish", "top": round(a.low, 2), "bottom": round(c.high, 2),
-                 "time": bars[i - 1].time, "index": i, "filled": bars[-1].high >= a.low}
+                {
+                    "side": "bearish",
+                    "top": round(a.low, 2),
+                    "bottom": round(c.high, 2),
+                    "time": bars[i - 1].time,
+                    "index": i,
+                    "filled": bars[-1].high >= a.low,
+                }
             )
     # Only the unfilled, most recent gaps matter to a live read.
     return [g for g in out if not g["filled"]][-5:]
@@ -172,7 +193,7 @@ def _order_blocks(bars: Sequence[Bar], events: Sequence[dict]) -> list[dict]:
     for ev in events[-6:]:
         idx = ev["index"]
         lo = max(0, idx - OB_SCAN_BARS)
-        block: Optional[Bar] = None
+        block: Bar | None = None
         for j in range(idx - 1, lo - 1, -1):
             bar = bars[j]
             if ev["direction"] == "bullish" and bar.close < bar.open:
@@ -223,7 +244,7 @@ def _session_ranges(bars: Sequence[Bar]) -> dict:
     return out
 
 
-def timeframe_facts(series: Series) -> Optional[dict]:
+def timeframe_facts(series: Series) -> dict | None:
     """Everything the engine can read off one timeframe, or ``None`` if too thin."""
     bars = series.bars
     if len(bars) < 30:
@@ -297,7 +318,9 @@ def _confluence(frames: dict[str, dict]) -> dict:
     }
 
 
-def build(series_by_tf: dict[str, Series], symbol: str = "XAUUSD", now: Optional[int] = None) -> FactSheet:
+def build(
+    series_by_tf: dict[str, Series], symbol: str = "XAUUSD", now: int | None = None
+) -> FactSheet:
     """Assemble the fact sheet from one series per timeframe.
 
     ``now`` is injectable so a build is reproducible in tests. Frames too thin

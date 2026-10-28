@@ -11,8 +11,8 @@ Two deliberate properties, both about not being annoying:
   * **State is persisted.** A restart resumes instead of re-alerting.
 """
 
+from .bot import Bot
 from .client import Telegram
 from .format import format_analysis, format_plan, format_status
-from .bot import Bot
 
 __all__ = ["Telegram", "format_analysis", "format_plan", "format_status", "Bot"]

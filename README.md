@@ -3,7 +3,8 @@
 A Telegram bot that reads the gold market (XAUUSD) through the lens of
 **SMC/ICT** — market structure, liquidity, order blocks, fair value gaps,
 sessions — and explains what it sees in plain Arabic. It also reads the
-economic calendar and the news wires, and folds both into the read.
+economic calendar and the news wires and puts them on the card, so a plan is
+never read without knowing what is about to print.
 
 **Advisory only. It never places an order.** The bot has no broker
 credentials and no order path; it polls the market, forms a view, and says
@@ -24,14 +25,15 @@ it. Everything it sends is a reading, not an instruction.
 - **Builds a plan** with entry, stop and target from the setup's own zone, and
   requires a minimum reward-to-risk ratio (default 2.0).
 - **Reads the news**: the economic calendar (high-impact events, blackout
-  windows) and gold-relevant RSS headlines.
+  windows) and gold-relevant RSS headlines. A high-impact blackout withholds a
+  new idea — the price card still goes out, with the window flagged, and the
+  idea follows once the window closes.
 - **Asks an AI for the narrative.** With a Groq key the bot adds a written
   read on top of the deterministic facts; without a key it still produces the
   full SMC/ICT plan, just without commentary.
 - **Sends only what is new.** A card goes out when the plan's identity
-  (direction plus the three levels) changes. A plan that wobbles by a tick is
-  the same idea, and repeating it is noise. A restart never replays the day's
-  alerts.
+  (direction plus setup) changes. A plan that wobbles by a tick is the same
+  idea, and repeating it is noise. A restart never replays the day's alerts.
 
 ---
 
@@ -51,11 +53,19 @@ Flags: `--no-ai` skips the AI layer, `--no-news` skips the news layer,
 
 ### In Telegram
 
-- `/start` or `/help` — the command list
+The bot opens with a persistent panel; every action is also available as a
+typed command.
+
+- `/start` or `/help` — the panel and the command list
 - `/تحليل` — the full SMC/ICT read, frame by frame
 - `/صفقة` — the current plan or market state
 - `/أخبار` — calendar and headlines
 - `/حالة` — a quick summary
+- `/تحديث` — read again now, bypassing the cache
+- `/إعدادات` — timeframes and sensitivity
+
+The automatic push is a price card: price, direction and the next release. It
+costs no model tokens — the AI prose is only produced when a card is asked for.
 
 ---
 
@@ -83,12 +93,16 @@ clobbered by a stale file. `.env` is gitignored; never commit it.
 | `TELEGRAM_CHAT_ID` | Where cards are sent |
 | `GROQ_API_KEY` | Groq key. Optional — without it the bot still produces plans |
 | `GROQ_MODEL` | Default `openai/gpt-oss-120b` |
+| `GROQ_FALLBACK_MODELS` | Tried in order when the primary's quota is spent |
+| `GROQ_MAX_TOKENS` | Reply cap (default 3000; the reasoning model needs headroom) |
 | `GOLDBOT_SYMBOL` | Default `XAUUSD` |
 | `GOLDBOT_TIMEFRAMES` | Default `M5,M15,M30,H1,H4` |
 | `GOLDBOT_BARS` | Bars per frame (default 220) |
 | `GOLDBOT_MIN_RR` | Minimum reward-to-risk (default 2.0) |
 | `GOLDBOT_POLL_SECONDS` | Loop interval (default 60) |
-| `GOLDBOT_ENABLE_*` | Toggle each data provider |
+| `GOLDBOT_CACHE_SECONDS` | Reuse a read within this window (default 90) |
+| `GOLDBOT_ENABLE_*` | Toggle each data provider (`KRAKEN`, `BINANCE`, `GOLDAPI`, `YAHOO`) |
+| `GOLDBOT_ENABLE_ARCHIVE` / `GOLDBOT_ARCHIVE_DIR` | Local archive on/off and where it lives |
 | `GOLDBOT_ENABLE_BOT` | Master switch for the bot loop |
 | `PORT` | When set, a health endpoint is served on it (for web hosts) |
 
@@ -115,7 +129,7 @@ feeding it, the archive is deep immediately, which makes the research scripts
 ## Tests
 
 ```bash
-python -m pytest tests/ -q     # 76 tests
+python -m pytest tests/ -q     # 172 tests
 ```
 
 ---
@@ -191,7 +205,7 @@ src/goldbot/
   telegram/         client, formatting, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
-tests/              76 tests
+tests/              172 tests
 ```
 
 ---

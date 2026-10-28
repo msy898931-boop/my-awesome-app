@@ -8,8 +8,7 @@ reader.
 
 from __future__ import annotations
 
-from typing import Optional
-
+from ..models import Series
 from .base import Provider, ProviderError, http_get_json
 
 BASE = "https://api.gold-api.com/price"
@@ -24,10 +23,10 @@ class GoldApiProvider(Provider):
     def __init__(self, symbol: str = "XAU") -> None:
         self.symbol = symbol
 
-    def fetch(self, timeframe: str, bars: int):  # type: ignore[override]
+    def fetch(self, timeframe: str, bars: int) -> Series:
         raise ProviderError("gold-api serves spot only, not candles")
 
-    def spot(self) -> Optional[float]:
+    def spot(self) -> float | None:
         payload = http_get_json(f"{BASE}/{self.symbol}")
         price = (payload or {}).get("price")
         if price is None:

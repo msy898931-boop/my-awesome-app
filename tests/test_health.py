@@ -63,7 +63,8 @@ def test_ping_once_tolerates_a_trailing_slash(monkeypatch):
             return b"{}"
 
     monkeypatch.setattr(
-        urllib.request, "urlopen",
+        urllib.request,
+        "urlopen",
         lambda url, timeout=None: (seen.append(url), _Resp())[1],
     )
     ping_once("https://example.onrender.com/")

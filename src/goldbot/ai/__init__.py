@@ -11,7 +11,7 @@ and a deterministic Arabic summary built from the facts, so a caller degrades
 instead of erroring.
 """
 
-from .analyst import Analyst, AnalysisResult
-from .prompt import build_prompt, SYSTEM_PROMPT
+from .analyst import AnalysisResult, Analyst
+from .prompt import SYSTEM_PROMPT, build_prompt
 
 __all__ = ["Analyst", "AnalysisResult", "build_prompt", "SYSTEM_PROMPT"]

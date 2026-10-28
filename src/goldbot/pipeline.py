@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 from .ai.analyst import Analyst
 from .config import Settings
@@ -36,7 +35,7 @@ class Result:
     analysis: dict = field(default_factory=dict)
     sources: dict = field(default_factory=dict)
     feed_notes: list = field(default_factory=list)
-    spot: Optional[dict] = None
+    spot: dict | None = None
     errors: list = field(default_factory=list)
 
     @property
@@ -52,7 +51,7 @@ class Result:
 class Pipeline:
     """Wires the stages together. Construct once, call ``run`` on a schedule."""
 
-    def __init__(self, settings: Settings, feed: Optional[MarketFeed] = None) -> None:
+    def __init__(self, settings: Settings, feed: MarketFeed | None = None) -> None:
         self.settings = settings
         self.feed = feed or build_feed(settings)
         self.analyst = Analyst(settings)
@@ -61,8 +60,9 @@ class Pipeline:
         # should not pay two network round-trips plus an AI call for it.
         self._cache: dict[tuple[bool, bool], tuple[float, Result]] = {}
 
-    def run(self, with_ai: bool = True, with_news: bool = True,
-            max_age: Optional[float] = None) -> Result:
+    def run(
+        self, with_ai: bool = True, with_news: bool = True, max_age: float | None = None
+    ) -> Result:
         key = (with_ai, with_news)
         age = self.settings.cache_seconds if max_age is None else max_age
         cached = self._cache.get(key)
@@ -84,8 +84,7 @@ class Pipeline:
         """
         if result.analysis or not result.facts:
             return result
-        analysis = self.analyst.analyse(result.facts, result.news or None,
-                                        self.settings.min_rr)
+        analysis = self.analyst.analyse(result.facts, result.news or None, self.settings.min_rr)
         result.analysis = analysis.as_dict()
         return result
 
@@ -101,8 +100,9 @@ class Pipeline:
                 result.feed_notes.append({"timeframe": tf, "attempts": report.attempts})
                 continue
             series_by_tf[tf] = series
-            result.feed_notes.append({"timeframe": tf, "chosen": report.chosen,
-                                      "attempts": report.attempts})
+            result.feed_notes.append(
+                {"timeframe": tf, "chosen": report.chosen, "attempts": report.attempts}
+            )
 
         if not series_by_tf:
             result.errors.append("لا يوجد أي فريم متاح — تعذّر التحليل")
@@ -125,8 +125,7 @@ class Pipeline:
         result.plan = plan.as_dict()
 
         if with_ai:
-            analysis = self.analyst.analyse(result.facts, result.news or None,
-                                            self.settings.min_rr)
+            analysis = self.analyst.analyse(result.facts, result.news or None, self.settings.min_rr)
             result.analysis = analysis.as_dict()
 
         return result

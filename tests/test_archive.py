@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import json
 
+from conftest import make_bars
 from goldbot.data.archive import Archive
 from goldbot.models import Bar, Series
-
-from conftest import make_bars
 
 
 def _series(bars, tf="M15"):
@@ -41,8 +40,12 @@ def test_merge_is_idempotent(tmp_path):
 def test_merge_appends_only_new_times(tmp_path):
     a = Archive(tmp_path)
     a.merge("M15", _series(make_bars([(100, 101, 99, 100), (100, 102, 100, 101)])))
-    added = a.merge("M15", _series(make_bars([(101, 103, 101, 102), (102, 104, 102, 103)],
-                                             start=1_700_000_000 + 2 * 900)))
+    added = a.merge(
+        "M15",
+        _series(
+            make_bars([(101, 103, 101, 102), (102, 104, 102, 103)], start=1_700_000_000 + 2 * 900)
+        ),
+    )
     assert added == 2
     assert [b.close for b in a.load("M15")] == [100, 101, 102, 103]
 
@@ -67,9 +70,15 @@ def test_newer_revision_wins(tmp_path):
 
 def test_max_bars_trims_the_oldest(tmp_path):
     a = Archive(tmp_path, max_bars=3)
-    a.merge("M15", _series(make_bars([(100, 101, 99, 100)] * 1 + [(101, 102, 100, 101),
-                                                                 (102, 103, 101, 102),
-                                                                 (103, 104, 102, 103)])))
+    a.merge(
+        "M15",
+        _series(
+            make_bars(
+                [(100, 101, 99, 100)] * 1
+                + [(101, 102, 100, 101), (102, 103, 101, 102), (103, 104, 102, 103)]
+            )
+        ),
+    )
     assert len(a.load("M15")) == 3
 
 

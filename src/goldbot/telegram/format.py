@@ -8,15 +8,15 @@ carries the advisory note.
 
 from __future__ import annotations
 
-from typing import Optional
-
 ADVISORY = "⚠️ _تحليل استشاري فقط — ليس نصيحة مالية، والبوت لا ينفّذ أي صفقة._"
 
 # Stated on every news card so the mechanical lean is never mistaken for a
 # measured edge. It has not been backtested; saying so is cheaper than a
 # trader assuming otherwise.
-NEWS_METHOD = ("_قراءة ميكانيكية: الفعلي مقابل التقدير، والأثر على الذهب مباشر "
-               "مع الدولار فقط. أثر الأخبار على نتائج النظام ما انقاس بعد — لا يُدَّعى حافة._")
+NEWS_METHOD = (
+    "_قراءة ميكانيكية: الفعلي مقابل التقدير، والأثر على الذهب مباشر "
+    "مع الدولار فقط. أثر الأخبار على نتائج النظام ما انقاس بعد — لا يُدَّعى حافة._"
+)
 
 BIAS_AR = {"bullish": "صاعد 📈", "bearish": "هابط 📉", "neutral": "محايد ↔️"}
 DIR_AR = {"buy": "شراء 🟢", "sell": "بيع 🔴", "none": "لا صفقة ⚪"}
@@ -29,8 +29,7 @@ def _esc(text: str) -> str:
     return text
 
 
-def format_price(spot: Optional[dict], plan: Optional[dict] = None,
-                 news: Optional[dict] = None) -> str:
+def format_price(spot: dict | None, plan: dict | None = None, news: dict | None = None) -> str:
     """The automatic push: live price, direction, and the next release.
 
     Deliberately small, and deliberately free. Everything here is deterministic,
@@ -46,14 +45,16 @@ def format_price(spot: Optional[dict], plan: Optional[dict] = None,
     else:
         lines.append("*السعر:* غير متاح")
 
-    direction = (plan or {}).get("direction", "none")
+    idea = plan or {}
+    direction = idea.get("direction", "none")
     if direction in {"buy", "sell"}:
         lines.append(f"*الاتجاه:* {DIR_AR.get(direction, direction)}")
-        if plan.get("setup"):
-            lines.append(f"*النموذج:* {_esc(str(plan['setup']))}")
+        if idea.get("setup"):
+            lines.append(f"*النموذج:* {_esc(str(idea['setup']))}")
 
-    upcoming = ((news or {}).get("upcoming") or [])
-    if (news or {}).get("blackout", {}).get("active"):
+    wire = news or {}
+    upcoming = wire.get("upcoming") or []
+    if (wire.get("blackout") or {}).get("active"):
         lines.append("🚨 *نافذة خبر عالي التأثير الآن*")
     elif upcoming:
         nxt = upcoming[0]
@@ -63,7 +64,7 @@ def format_price(spot: Optional[dict], plan: Optional[dict] = None,
     return "\n".join(lines)
 
 
-def format_plan(plan: dict, analysis: Optional[dict] = None, news: Optional[dict] = None) -> str:
+def format_plan(plan: dict, analysis: dict | None = None, news: dict | None = None) -> str:
     """The main card: a plan, its numbers, and the reasoning behind it."""
     direction = plan.get("direction", "none")
     if direction == "none":
@@ -104,7 +105,7 @@ def format_plan(plan: dict, analysis: Optional[dict] = None, news: Optional[dict
     return "\n".join(lines)
 
 
-def format_status(plan: dict, analysis: Optional[dict] = None, news: Optional[dict] = None) -> str:
+def format_status(plan: dict, analysis: dict | None = None, news: dict | None = None) -> str:
     """The no-trade card: why there is nothing to do, plus the market state."""
     lines = ["🥇 *XAUUSD — لا توجد صفقة الآن*", ""]
     if analysis and analysis.get("market_state"):
@@ -121,15 +122,18 @@ def format_status(plan: dict, analysis: Optional[dict] = None, news: Optional[di
         upcoming = news.get("upcoming") or []
         if upcoming:
             nxt = upcoming[0]
-            lines += ["", f"📅 أقرب حدث: {_esc(str(nxt.get('title')))} "
-                          f"[{_esc(str(nxt.get('country')))}] بعد {nxt.get('in_minutes')} دقيقة"]
+            lines += [
+                "",
+                f"📅 أقرب حدث: {_esc(str(nxt.get('title')))} "
+                f"[{_esc(str(nxt.get('country')))}] بعد {nxt.get('in_minutes')} دقيقة",
+            ]
     lines += ["", ADVISORY]
     return "\n".join(lines)
 
 
-def format_analysis(sheet: dict, news: Optional[dict] = None) -> str:
+def format_analysis(sheet: dict, news: dict | None = None) -> str:
     """The `/تحليل` card: the raw SMC read, frame by frame."""
-    lines = [f"🥇 *XAUUSD — قراءة SMC/ICT*", ""]
+    lines = ["🥇 *XAUUSD — قراءة SMC/ICT*", ""]
     confluence = sheet.get("confluence") or {}
     lines.append(
         f"*الانحياز:* {BIAS_AR.get(confluence.get('bias', 'neutral'), 'محايد')} "
@@ -186,8 +190,11 @@ def _gold_lean(event: dict) -> str:
     if read == "inline":
         return "الفعلي مطابق للتقدير → لا إشارة"
     if read == "direct":
-        actual, forecast, previous = (event.get("actual"), event.get("forecast"),
-                                      event.get("previous"))
+        actual, forecast, previous = (
+            event.get("actual"),
+            event.get("forecast"),
+            event.get("previous"),
+        )
         baseline = forecast if event.get("baseline") == "forecast" else previous
         direction = "أعلى" if (actual or 0) > (baseline or 0) else "أدنى"
         # A stronger dollar pressures gold, so "دعم للذهب" implies a weaker one.
@@ -220,8 +227,10 @@ def format_news(news: dict) -> str:
     elif blackout.get("active"):
         lines.append("🚨 *نافذة خبر عالي التأثير الآن*")
         for e in (blackout.get("imminent") or [])[:3]:
-            lines.append(f"  • {_esc(str(e.get('title')))} "
-                         f"[{_esc(str(e.get('country')))}] {_when(e.get('minutes'))}")
+            lines.append(
+                f"  • {_esc(str(e.get('title')))} "
+                f"[{_esc(str(e.get('country')))}] {_when(e.get('minutes'))}"
+            )
     else:
         lines.append("✅ *السوق خالٍ من الأخبار المهمة*")
 
@@ -240,10 +249,14 @@ def format_news(news: dict) -> str:
     if released:
         lines += ["", "💱 *صدر للتو:*"]
         for e in released[:5]:
-            lines.append(f"  • {_esc(str(e.get('title')))} [{_esc(str(e.get('country')))}] "
-                         f"قبل {_when(abs(e.get('in_minutes') or 0))}")
-            lines.append(f"    الفعلي {_num(e.get('actual'))} · التقدير {_num(e.get('forecast'))}"
-                         f" · السابق {_num(e.get('previous'))}")
+            lines.append(
+                f"  • {_esc(str(e.get('title')))} [{_esc(str(e.get('country')))}] "
+                f"قبل {_when(abs(e.get('in_minutes') or 0))}"
+            )
+            lines.append(
+                f"    الفعلي {_num(e.get('actual'))} · التقدير {_num(e.get('forecast'))}"
+                f" · السابق {_num(e.get('previous'))}"
+            )
             lines.append(f"    {_gold_lean(e)}")
 
     headlines = news.get("headlines") or []

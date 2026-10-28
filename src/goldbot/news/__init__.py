@@ -18,7 +18,7 @@ Honesty rules, carried deliberately from the reference project:
 """
 
 from .calendar import CalendarFeed, Event
-from .rss import RssFeed, Headline
+from .rss import Headline, RssFeed
 from .window import blackout, digest
 
 __all__ = ["CalendarFeed", "Event", "RssFeed", "Headline", "blackout", "digest"]

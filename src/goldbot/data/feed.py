@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..config import Settings
 from ..models import Series
@@ -62,7 +61,7 @@ class MarketFeed:
         self,
         providers: list[Provider],
         min_bars: int = MIN_BARS,
-        archive: Optional["Archive"] = None,
+        archive: Archive | None = None,
     ) -> None:
         self.providers = providers
         self.min_bars = min_bars
@@ -70,7 +69,7 @@ class MarketFeed:
 
     def series(
         self, timeframe: str, bars: int, prefer_depth: bool = False
-    ) -> tuple[Optional[Series], FeedReport]:
+    ) -> tuple[Series | None, FeedReport]:
         """Pick a series for ``timeframe``.
 
         Live trading wants the freshest tape, because structure read off a
@@ -135,7 +134,7 @@ class MarketFeed:
         report.chosen = best.source
         return best, report
 
-    def spot_check(self, series: Series) -> Optional[dict]:
+    def spot_check(self, series: Series) -> dict | None:
         """Compare the newest close against keyless spot quotes.
 
         Returns ``None`` when no spot source answers, so an offline check is
@@ -164,7 +163,7 @@ class MarketFeed:
             "trusted": worst <= 0.03,
         }
 
-    def staleness_minutes(self, series: Series, timeframe: str) -> Optional[float]:
+    def staleness_minutes(self, series: Series, timeframe: str) -> float | None:
         """How far behind the wall clock the newest bar's open is, in minutes."""
         if not series.bars:
             return None

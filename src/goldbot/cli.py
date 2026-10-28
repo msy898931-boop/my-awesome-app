@@ -1,10 +1,10 @@
 """Command line: run the analysis once, or run the bot.
 
-    python -m goldbot.cli analyse          # print the full read as JSON
-    python -m goldbot.cli card             # print the Telegram card as text
-    python -m goldbot.cli bot              # run the polling loop
-    python -m goldbot.cli send             # send one card to the configured chat
-    python -m goldbot.cli backtest         # run the historical study
+python -m goldbot.cli analyse          # print the full read as JSON
+python -m goldbot.cli card             # print the Telegram card as text
+python -m goldbot.cli bot              # run the polling loop
+python -m goldbot.cli send             # send one card to the configured chat
+python -m goldbot.cli backtest         # run the historical study
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import sys
 
 from .config import load_settings
 from .pipeline import Pipeline
-from .telegram.format import format_analysis, format_news, format_plan
+from .telegram.format import format_news, format_plan
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,7 +45,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "news":
         result = Pipeline(settings).run(with_ai=False, with_news=True)
-        print(format_news(result.news) if not args.json else json.dumps(result.news, ensure_ascii=False, indent=2))
+        print(
+            format_news(result.news)
+            if not args.json
+            else json.dumps(result.news, ensure_ascii=False, indent=2)
+        )
         return 0
 
     if args.command == "send":

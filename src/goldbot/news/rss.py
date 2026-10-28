@@ -28,9 +28,27 @@ FEEDS = (
 
 # Terms that make a headline plausibly gold-relevant.
 GOLD_TERMS = (
-    "gold", "xauusd", "bullion", "fed", "fomc", "rate", "inflation", "cpi",
-    "dollar", "treasury", "yield", "geopolit", "war", "sanction", "opec",
-    "recession", "payroll", "powell", "ecb", "boj", "stimulus",
+    "gold",
+    "xauusd",
+    "bullion",
+    "fed",
+    "fomc",
+    "rate",
+    "inflation",
+    "cpi",
+    "dollar",
+    "treasury",
+    "yield",
+    "geopolit",
+    "war",
+    "sanction",
+    "opec",
+    "recession",
+    "payroll",
+    "powell",
+    "ecb",
+    "boj",
+    "stimulus",
 )
 
 
@@ -42,8 +60,12 @@ class Headline:
     published: int = 0
 
     def as_dict(self) -> dict:
-        return {"title": self.title, "source": self.source, "link": self.link,
-                "published": self.published}
+        return {
+            "title": self.title,
+            "source": self.source,
+            "link": self.link,
+            "published": self.published,
+        }
 
 
 class RssFeed:

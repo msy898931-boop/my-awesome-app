@@ -8,7 +8,7 @@ a provider can be swapped without touching the engine.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class Bar:
         }
 
     @classmethod
-    def from_dict(cls, row: dict[str, Any]) -> Optional["Bar"]:
+    def from_dict(cls, row: dict[str, Any]) -> Bar | None:
         try:
             return cls(
                 time=int(row["time"]),

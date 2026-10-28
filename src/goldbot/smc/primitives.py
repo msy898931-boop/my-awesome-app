@@ -7,7 +7,7 @@ every downstream read is reproducible and testable.
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from ..models import Bar
 
@@ -26,7 +26,7 @@ def true_ranges(bars: Sequence[Bar]) -> list[float]:
     return out
 
 
-def atr(bars: Sequence[Bar], period: int = ATR_PERIOD) -> Optional[float]:
+def atr(bars: Sequence[Bar], period: int = ATR_PERIOD) -> float | None:
     """Average true range over ``period`` bars. ``None`` when there is too little data."""
     if len(bars) < period + 1:
         return None
@@ -36,7 +36,9 @@ def atr(bars: Sequence[Bar], period: int = ATR_PERIOD) -> Optional[float]:
     return sum(trs) / len(trs)
 
 
-def swings(bars: Sequence[Bar], lookback: int = 2) -> tuple[list[tuple[int, float]], list[tuple[int, float]]]:
+def swings(
+    bars: Sequence[Bar], lookback: int = 2
+) -> tuple[list[tuple[int, float]], list[tuple[int, float]]]:
     """Fractal swing highs and lows.
 
     A bar is a swing high when its high is the strict extreme of ``lookback``
@@ -63,7 +65,7 @@ def swings(bars: Sequence[Bar], lookback: int = 2) -> tuple[list[tuple[int, floa
 
 def structure_events(
     bars: Sequence[Bar], lookback: int = 2
-) -> tuple[str, list[dict], Optional[float], Optional[float]]:
+) -> tuple[str, list[dict], float | None, float | None]:
     """Walk the swings and record every break of structure / change of character.
 
     Returns ``(trend, events, last_swing_high, last_swing_low)`` where ``trend``
@@ -88,8 +90,8 @@ def structure_events(
         return "range", events, None, None
 
     trend = "range"
-    last_high: Optional[float] = None
-    last_low: Optional[float] = None
+    last_high: float | None = None
+    last_low: float | None = None
     hi_i = lo_i = 0
 
     for i, bar in enumerate(bars):

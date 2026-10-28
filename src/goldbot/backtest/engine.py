@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 from ..config import Settings
 from ..models import Bar
@@ -87,7 +86,9 @@ class BacktestReport:
 
 
 def evaluate_trade(
-    trade: Trade, future: list[Bar], cost_fraction: float = COST_FRACTION,
+    trade: Trade,
+    future: list[Bar],
+    cost_fraction: float = COST_FRACTION,
     fill_window: int = FILL_WINDOW_BARS,
 ) -> Trade:
     """Resolve a trade against the bars that followed it, in two phases.
@@ -314,8 +315,9 @@ def run_backtest(settings: Settings, with_ai: bool = False) -> dict:
         if series is not None and len(series) >= 90:
             series_by_tf[tf] = series
     if not series_by_tf:
-        return BacktestReport(symbol=settings.symbol, bars_tested=0, signals=0,
-                              notes=["لا بيانات تاريخية متاحة"]).as_dict()
+        return BacktestReport(
+            symbol=settings.symbol, bars_tested=0, signals=0, notes=["لا بيانات تاريخية متاحة"]
+        ).as_dict()
 
     primary_tf = "M15" if "M15" in series_by_tf else next(iter(series_by_tf))
     report = BacktestReport(

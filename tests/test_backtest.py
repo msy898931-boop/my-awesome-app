@@ -7,14 +7,21 @@ pinned here.
 
 from __future__ import annotations
 
-from goldbot.backtest.engine import COST_FRACTION, Trade, evaluate_trade
-
 from conftest import make_bars
+from goldbot.backtest.engine import COST_FRACTION, Trade, evaluate_trade
 
 
 def _trade(direction="buy", entry=100.0, stop=98.0, target=106.0, rr=3.0):
-    return Trade(index=0, time=0, direction=direction, entry=entry, stop=stop,
-                 target=target, rr=rr, setup="test")
+    return Trade(
+        index=0,
+        time=0,
+        direction=direction,
+        entry=entry,
+        stop=stop,
+        target=target,
+        rr=rr,
+        setup="test",
+    )
 
 
 def test_target_hit_first_is_a_win():
@@ -46,8 +53,9 @@ def test_entry_not_touched_is_not_a_trade():
 
 
 def test_entry_behind_price_fills_when_price_returns():
-    future = make_bars([(101, 101.5, 100.5, 101), (101, 101.5, 99.5, 100.2),
-                        (100.2, 107, 100, 106)])
+    future = make_bars(
+        [(101, 101.5, 100.5, 101), (101, 101.5, 99.5, 100.2), (100.2, 107, 100, 106)]
+    )
     trade = evaluate_trade(_trade(entry=100.0), future)
     assert trade.outcome == "win"
 

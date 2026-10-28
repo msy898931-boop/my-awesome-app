@@ -13,8 +13,7 @@ import json
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 USER_AGENT = "gold-smc-ict-bot/0.1"
@@ -58,9 +57,9 @@ class Event:
     country: str
     impact: str
     time: int
-    forecast: Optional[float] = None
-    previous: Optional[float] = None
-    actual: Optional[float] = None
+    forecast: float | None = None
+    previous: float | None = None
+    actual: float | None = None
     unit: str = ""
 
     def gold_read(self) -> dict:
@@ -70,9 +69,14 @@ class Event:
         gold, so the sign flips. Non-US events are labelled indirect and carry
         no directional claim.
         """
-        out = {"title": self.title, "country": self.country, "impact": self.impact,
-               "actual": self.actual, "forecast": self.forecast,
-               "previous": self.previous}
+        out = {
+            "title": self.title,
+            "country": self.country,
+            "impact": self.impact,
+            "actual": self.actual,
+            "forecast": self.forecast,
+            "previous": self.previous,
+        }
         if self.actual is None:
             out.update({"read": "pending", "baseline": None, "note": "لم يصدر بعد"})
             return out
@@ -81,8 +85,11 @@ class Event:
             baseline_name, baseline = ("previous", self.previous)
         if baseline is None:
             out.update(
-                {"read": "no_baseline", "baseline": None,
-                 "note": "لا يوجد توقّع ولا سابق — لا يُستنتج اتجاه"}
+                {
+                    "read": "no_baseline",
+                    "baseline": None,
+                    "note": "لا يوجد توقّع ولا سابق — لا يُستنتج اتجاه",
+                }
             )
             return out
 
@@ -96,13 +103,22 @@ class Event:
         if self.country.upper() in {"USD", "US", "UNITED STATES"}:
             lean = "ضغط على الذهب" if dollar_strong else "دعم للذهب"
             out.update(
-                {"read": "direct", "baseline": baseline_name, "delta": round(surprise, 3),
-                 "gold": lean, "note": "دولار أقوى/أضعف من المتوقع"}
+                {
+                    "read": "direct",
+                    "baseline": baseline_name,
+                    "delta": round(surprise, 3),
+                    "gold": lean,
+                    "note": "دولار أقوى/أضعف من المتوقع",
+                }
             )
         else:
             out.update(
-                {"read": "indirect", "baseline": baseline_name, "delta": round(surprise, 3),
-                 "note": "أثر غير مباشر على الذهب"}
+                {
+                    "read": "indirect",
+                    "baseline": baseline_name,
+                    "delta": round(surprise, 3),
+                    "note": "أثر غير مباشر على الذهب",
+                }
             )
         return out
 
@@ -115,7 +131,7 @@ def _higher_is_stronger(title: str) -> bool:
     return True
 
 
-def _to_float(value) -> Optional[float]:
+def _to_float(value) -> float | None:
     if value in (None, "", "-"):
         return None
     try:
@@ -124,7 +140,7 @@ def _to_float(value) -> Optional[float]:
         return None
 
 
-def _to_epoch(raw) -> Optional[int]:
+def _to_epoch(raw) -> int | None:
     """Parse the mirror's ISO timestamp into Unix seconds."""
     if not raw:
         return None
@@ -224,7 +240,7 @@ def _retry_after(headers) -> float:
         return 0.0
 
 
-def _parse(row: dict) -> Optional[Event]:
+def _parse(row: dict) -> Event | None:
     title = (row.get("title") or "").strip()
     when = _to_epoch(row.get("date"))
     if not title or when is None:

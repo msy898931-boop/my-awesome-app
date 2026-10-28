@@ -20,7 +20,6 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 from ..models import Bar, Series
 
@@ -68,7 +67,7 @@ class Archive:
         self._write(timeframe, merged)
         return len(existing) - before
 
-    def series(self, timeframe: str, bars: int) -> Optional[Series]:
+    def series(self, timeframe: str, bars: int) -> Series | None:
         stored = self.load(timeframe)
         if not stored:
             return None

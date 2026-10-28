@@ -57,7 +57,9 @@ def build_prompt(facts: dict, news: dict | None = None, compact: bool = True) ->
     payload = {
         "symbol": facts.get("symbol"),
         "confluence": facts.get("confluence"),
-        "timeframes": _trim_frames(facts.get("timeframes", {})) if compact else facts.get("timeframes"),
+        "timeframes": _trim_frames(facts.get("timeframes", {}))
+        if compact
+        else facts.get("timeframes"),
     }
     if news:
         payload["news"] = {
@@ -81,8 +83,13 @@ def _trim_frames(frames: dict) -> dict:
     the long tails of past zones do not.
     """
     keep = (
-        "trend", "last_close", "atr", "last_event", "premium_discount",
-        "last_swing_high", "last_swing_low",
+        "trend",
+        "last_close",
+        "atr",
+        "last_event",
+        "premium_discount",
+        "last_swing_high",
+        "last_swing_low",
     )
     out: dict = {}
     for tf, facts in frames.items():
@@ -90,11 +97,13 @@ def _trim_frames(frames: dict) -> dict:
         # Only the nearest unfilled zones matter for a decision now.
         trimmed["fair_value_gaps"] = _nearest(
             [g for g in (facts.get("fair_value_gaps") or []) if not g.get("filled")],
-            facts.get("last_close"), 2,
+            facts.get("last_close"),
+            2,
         )
         trimmed["order_blocks"] = _nearest(
             [o for o in (facts.get("order_blocks") or []) if not o.get("mitigated")],
-            facts.get("last_close"), 2,
+            facts.get("last_close"),
+            2,
         )
         trimmed["sweeps"] = (facts.get("sweeps") or [])[-2:]
         liq = facts.get("liquidity") or {}

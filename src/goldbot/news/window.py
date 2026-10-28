@@ -9,7 +9,6 @@ stop already placed does not care about the calendar.
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 from .calendar import CalendarFeed, Event
 from .rss import RssFeed
@@ -21,7 +20,7 @@ AFTER_MINUTES = 15
 # One feed per process. The cache and the 429 back-off only work if the same
 # instance is reused; building a fresh feed per call is what turned a single
 # rate-limit into a permanent one, because every call retried from scratch.
-_FEEDS: Optional[tuple[CalendarFeed, RssFeed]] = None
+_FEEDS: tuple[CalendarFeed, RssFeed] | None = None
 
 
 def _feeds() -> tuple[CalendarFeed, RssFeed]:
@@ -32,8 +31,10 @@ def _feeds() -> tuple[CalendarFeed, RssFeed]:
 
 
 def blackout(
-    events: list[Event], now: Optional[float] = None,
-    before: int = BEFORE_MINUTES, after: int = AFTER_MINUTES,
+    events: list[Event],
+    now: float | None = None,
+    before: int = BEFORE_MINUTES,
+    after: int = AFTER_MINUTES,
 ) -> dict:
     """Whether a high-impact release is printing now or imminent.
 
@@ -48,8 +49,12 @@ def blackout(
         if -after <= delta_min <= before:
             active = True
             imminent.append(
-                {"title": event.title, "country": event.country,
-                 "minutes": round(delta_min, 1), "impact": event.impact}
+                {
+                    "title": event.title,
+                    "country": event.country,
+                    "minutes": round(delta_min, 1),
+                    "impact": event.impact,
+                }
             )
     imminent.sort(key=lambda e: abs(e["minutes"]))
     return {
@@ -60,7 +65,7 @@ def blackout(
     }
 
 
-def digest(now: Optional[float] = None) -> dict:
+def digest(now: float | None = None) -> dict:
     """Assemble the full news picture: schedule, tape and blackout.
 
     Read-only and keyless. Every fetch failure degrades to an empty list, but it
@@ -72,12 +77,11 @@ def digest(now: Optional[float] = None) -> dict:
     calendar, rss = _feeds()
 
     high = calendar.high_impact()
-    upcoming = sorted(
-        [e for e in high if e.time >= now], key=lambda e: e.time
-    )[:6]
+    upcoming = sorted([e for e in high if e.time >= now], key=lambda e: e.time)[:6]
     released = sorted(
         [e for e in high if e.time < now and e.actual is not None],
-        key=lambda e: e.time, reverse=True,
+        key=lambda e: e.time,
+        reverse=True,
     )[:5]
 
     window = blackout(high, now)
@@ -85,8 +89,12 @@ def digest(now: Optional[float] = None) -> dict:
         # Every card reads ``reason``, so the honesty has to live here rather
         # than in each formatter. An unchecked calendar is not a quiet one.
         suffix = " (بيانات قديمة)" if calendar.stale else ""
-        window = {**window, "active": False, "checked": False,
-                  "reason": f"تعذّر فحص التقويم: {calendar.error or 'غير متاح'}{suffix}"}
+        window = {
+            **window,
+            "active": False,
+            "checked": False,
+            "reason": f"تعذّر فحص التقويم: {calendar.error or 'غير متاح'}{suffix}",
+        }
     else:
         window = {**window, "checked": True}
 
@@ -94,14 +102,19 @@ def digest(now: Optional[float] = None) -> dict:
         "generated_at": int(now),
         "blackout": window,
         "upcoming": [
-            {"title": e.title, "country": e.country, "impact": e.impact,
-             "time": e.time, "in_minutes": round((e.time - now) / 60.0, 1),
-             "forecast": e.forecast, "previous": e.previous}
+            {
+                "title": e.title,
+                "country": e.country,
+                "impact": e.impact,
+                "time": e.time,
+                "in_minutes": round((e.time - now) / 60.0, 1),
+                "forecast": e.forecast,
+                "previous": e.previous,
+            }
             for e in upcoming
         ],
         "released": [
-            {**e.gold_read(), "in_minutes": round((e.time - now) / 60.0, 1)}
-            for e in released
+            {**e.gold_read(), "in_minutes": round((e.time - now) / 60.0, 1)} for e in released
         ],
         "headlines": [h.as_dict() for h in rss.relevant(6)],
         "source": {

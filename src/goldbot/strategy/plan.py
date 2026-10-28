@@ -20,7 +20,6 @@ listed.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 # Frames, coarse to fine. Bias comes from the top, entry from the bottom.
 HTF = ("H4", "H1")
@@ -84,7 +83,7 @@ def pick_setup(facts: dict, min_rr: float = 2.0) -> Plan:
     # A neutral read means the frames disagree; there is no trend to join, so
     # both directions stay open and the setups must stand on their own evidence.
     if bias == "neutral":
-        directions = ("buy", "sell")
+        directions: tuple[str, ...] = ("buy", "sell")
     else:
         directions = ("buy",) if bias == "bullish" else ("sell",)
 
@@ -124,7 +123,8 @@ def pick_setup(facts: dict, min_rr: float = 2.0) -> Plan:
 
 # ── setup 1: CHoCH + FVG/OB retest ───────────────────────────────────────
 
-def _try_choch_retest(frames: dict, direction: str, min_rr: float) -> Optional[Plan]:
+
+def _try_choch_retest(frames: dict, direction: str, min_rr: float) -> Plan | None:
     htf_ok = any(
         frames.get(tf, {}).get("trend") == ("bullish" if direction == "buy" else "bearish")
         for tf in HTF
@@ -147,14 +147,25 @@ def _try_choch_retest(frames: dict, direction: str, min_rr: float) -> Optional[P
             continue
         entry, stop_anchor, kind, far_edge = zone
         plan = _candidate(
-            direction, entry, stop_anchor, atr, frames, min_rr,
+            direction,
+            entry,
+            stop_anchor,
+            atr,
+            frames,
+            min_rr,
             setup="CHoCH + إعادة اختبار FVG/OB",
             reason=(
                 f"تغيّر شخصية {want} على {tf} يؤكد انحياز الفريم الأعلى، "
                 f"والسعر عاد إلى منطقة {'الفجوة السعرية' if kind == 'FVG' else 'كتلة الأوامر'} "
                 f"بين {far_edge:.2f} و {entry:.2f}"
             ),
-            score=3 + (1 if f.get("premium_discount", {}).get("zone") == ("discount" if direction == "buy" else "premium") else 0),
+            score=3
+            + (
+                1
+                if f.get("premium_discount", {}).get("zone")
+                == ("discount" if direction == "buy" else "premium")
+                else 0
+            ),
             factors=[f"CHoCH {want} على {tf}", f"منطقة {kind} عند {entry:.2f}"],
             timeframe=tf,
         )
@@ -165,7 +176,8 @@ def _try_choch_retest(frames: dict, direction: str, min_rr: float) -> Optional[P
 
 # ── setup 2: BOS continuation ────────────────────────────────────────────
 
-def _try_bos_continuation(frames: dict, direction: str, bias: str, min_rr: float) -> Optional[Plan]:
+
+def _try_bos_continuation(frames: dict, direction: str, bias: str, min_rr: float) -> Plan | None:
     """BOS continuation, entered on the *retest* of the broken level.
 
     The break itself is not the entry — buying the break is a chase. The entry
@@ -194,18 +206,23 @@ def _try_bos_continuation(frames: dict, direction: str, bias: str, min_rr: float
             continue
         atr = f.get("atr") or 0.0
         entry = float(level)
-        stop_anchor = (f.get("last_swing_low") if direction == "buy" else f.get("last_swing_high"))
+        stop_anchor = f.get("last_swing_low") if direction == "buy" else f.get("last_swing_high")
         if stop_anchor is None:
             continue
         plan = _candidate(
-            direction, entry, float(stop_anchor), atr, frames, min_rr,
+            direction,
+            entry,
+            float(stop_anchor),
+            atr,
+            frames,
+            min_rr,
             setup="استمرار BOS (إعادة اختبار المستوى)",
             reason=(
                 f"كسر بنية {want_bias} على {tf} عند {entry:.2f} مع انحياز عام {bias}، "
                 f"والدخول على إعادة اختبار المستوى المكسور كدعم/مقاومة جديد"
             ),
             score=2,
-            factors=[f"BOS على {tf} عند {entry:.2f}", f"إعادة اختبار المستوى المكسور"],
+            factors=[f"BOS على {tf} عند {entry:.2f}", "إعادة اختبار المستوى المكسور"],
             timeframe=tf,
         )
         if plan:
@@ -215,7 +232,8 @@ def _try_bos_continuation(frames: dict, direction: str, bias: str, min_rr: float
 
 # ── setup 3: liquidity sweep reversal ────────────────────────────────────
 
-def _try_sweep_reversal(frames: dict, direction: str, min_rr: float) -> Optional[Plan]:
+
+def _try_sweep_reversal(frames: dict, direction: str, min_rr: float) -> Plan | None:
     want_sweep = "buy_side_taken" if direction == "sell" else "sell_side_taken"
     for tf in LTF:
         f = frames.get(tf)
@@ -236,7 +254,12 @@ def _try_sweep_reversal(frames: dict, direction: str, min_rr: float) -> Optional
         entry = f.get("last_close") or level
         stop_anchor = level - atr * 0.5 if direction == "buy" else level + atr * 0.5
         plan = _candidate(
-            direction, float(entry), float(stop_anchor), atr, frames, min_rr,
+            direction,
+            float(entry),
+            float(stop_anchor),
+            atr,
+            frames,
+            min_rr,
             setup="انعكاس بعد كنس سيولة",
             reason=(
                 f"كنس سيولة عند {level:.2f} على {tf} من منطقة {pd_zone}، "
@@ -253,7 +276,8 @@ def _try_sweep_reversal(frames: dict, direction: str, min_rr: float) -> Optional
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
-def _best_zone(f: dict, direction: str, atr: float) -> Optional[tuple]:
+
+def _best_zone(f: dict, direction: str, atr: float) -> tuple | None:
     """The nearest zone the price must *retrace into*, or ``None``.
 
     Returns ``(entry, stop_anchor, kind, far_edge)``.
@@ -304,7 +328,7 @@ def _best_zone(f: dict, direction: str, atr: float) -> Optional[tuple]:
 
 def _opposing_liquidity(
     frames: dict, direction: str, entry: float, stop: float = 0.0, min_rr: float = 2.0
-) -> Optional[float]:
+) -> float | None:
     """A resting pool ahead of entry that actually pays for the risk.
 
     The nearest pool is not automatically the target: with a stop set at a
@@ -340,7 +364,7 @@ def _opposing_liquidity(
     return ahead[0]
 
 
-def _stop_for(direction: str, entry: float, stop_anchor: float, atr: float) -> Optional[float]:
+def _stop_for(direction: str, entry: float, stop_anchor: float, atr: float) -> float | None:
     """The stop, pushed out to a realistic floor. ``None`` if the anchor is wrong-side."""
     floor = max(atr * MIN_STOP_ATR if atr else 0.0, entry * MIN_STOP_PCT)
     if direction == "buy":
@@ -351,10 +375,18 @@ def _stop_for(direction: str, entry: float, stop_anchor: float, atr: float) -> O
 
 
 def _candidate(
-    direction: str, entry: float, stop_anchor: float, atr: float, frames: dict,
-    min_rr: float, setup: str, reason: str, score: int, factors: list[str],
+    direction: str,
+    entry: float,
+    stop_anchor: float,
+    atr: float,
+    frames: dict,
+    min_rr: float,
+    setup: str,
+    reason: str,
+    score: int,
+    factors: list[str],
     timeframe: str,
-) -> Optional[Plan]:
+) -> Plan | None:
     """Stop first, then a target that clears the minimum R:R, then validate.
 
     Ordering matters: choosing the target before the stop is what produces the

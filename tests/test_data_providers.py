@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import pytest
 
-from goldbot.data import feed as feed_module
 from goldbot.data.binance import BinanceProvider
 from goldbot.data.feed import MarketFeed
 from goldbot.models import Bar, Series
@@ -26,7 +25,9 @@ def _klines(start: int, count: int, step_ms: int = 3_600_000):
     rows = []
     for i in range(count):
         t = start + i * step_ms
-        rows.append([t, "2000.0", "2010.0", "1990.0", "2005.0", "12.5", t + step_ms, "0", 1, "0", "0", "0"])
+        rows.append(
+            [t, "2000.0", "2010.0", "1990.0", "2005.0", "12.5", t + step_ms, "0", 1, "0", "0", "0"]
+        )
     return rows
 
 

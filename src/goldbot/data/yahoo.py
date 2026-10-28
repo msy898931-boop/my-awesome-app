@@ -10,7 +10,6 @@ source; the crypto-gold providers fill the weekend gap where it is closed.
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
 
 from ..models import Bar, Series
 from .base import Provider, ProviderError, clean_bars, http_get_json
@@ -108,11 +107,11 @@ class YahooProvider(Provider):
             raise ProviderError("no usable bars")
         return series
 
-    def spot(self) -> Optional[float]:
+    def spot(self) -> float | None:
         try:
             payload = http_get_json(f"{BASE}/{self.symbol}?interval=1m&range=1d")
             node = ((payload or {}).get("chart") or {}).get("result", [{}])[0]
-            price = ((node.get("meta") or {}).get("regularMarketPrice"))
+            price = (node.get("meta") or {}).get("regularMarketPrice")
             return float(price) if price is not None else None
         except (ProviderError, TypeError, ValueError):
             return None

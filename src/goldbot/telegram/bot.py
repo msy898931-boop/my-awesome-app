@@ -9,11 +9,11 @@ that merely wobbles by a tick is the same idea, and repeating it is noise.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
 from dataclasses import replace
-from typing import Optional
 
 from ..config import Settings
 from ..pipeline import Pipeline, Result
@@ -101,9 +101,9 @@ def resolve_data(raw: str) -> str:
     key = (raw or "").strip()
     if not key:
         return key
-    return LEGACY_ALIASES.get(key) or LEGACY_ALIASES.get(
-        key.replace(_VARIATION_SELECTOR, "")
-    ) or key
+    return (
+        LEGACY_ALIASES.get(key) or LEGACY_ALIASES.get(key.replace(_VARIATION_SELECTOR, "")) or key
+    )
 
 
 # Settings the user may change from the bot, and where each is remembered on
@@ -116,8 +116,7 @@ def menu_keyboard() -> dict:
     """The inline keyboard attached to every card."""
     return {
         "inline_keyboard": [
-            [{"text": label, "callback_data": data} for label, data in row]
-            for row in MENU
+            [{"text": label, "callback_data": data} for label, data in row] for row in MENU
         ]
     }
 
@@ -146,21 +145,27 @@ def settings_keyboard(timeframes: tuple[str, ...], min_rr: float) -> dict:
     active = set(timeframes)
     frame_rows: list[list[dict]] = [[], []]
     for index, tf in enumerate(ALL_TIMEFRAMES):
-        frame_rows[index // 4].append({
-            "text": f"{'✅' if tf in active else '⬜'} {tf}",
-            "callback_data": f"tf:{tf}",
-        })
+        frame_rows[index // 4].append(
+            {
+                "text": f"{'✅' if tf in active else '⬜'} {tf}",
+                "callback_data": f"tf:{tf}",
+            }
+        )
     sens_row = [
-        {"text": f"{'✅ ' if abs(min_rr - value) < 1e-9 else ''}{label}",
-         "callback_data": f"sens:{key}"}
+        {
+            "text": f"{'✅ ' if abs(min_rr - value) < 1e-9 else ''}{label}",
+            "callback_data": f"sens:{key}",
+        }
         for key, label, value in SENSITIVITY
     ]
     return {
         "inline_keyboard": [
             *[row for row in frame_rows if row],
             sens_row,
-            [{"text": "🔄 تحديث", "callback_data": "refresh"},
-             {"text": "↩️ رجوع", "callback_data": "menu"}],
+            [
+                {"text": "🔄 تحديث", "callback_data": "refresh"},
+                {"text": "↩️ رجوع", "callback_data": "menu"},
+            ],
         ]
     }
 
@@ -169,16 +174,20 @@ class Bot:
     """Polls the pipeline and pushes cards. Persists state across restarts."""
 
     def __init__(
-        self, settings: Settings, pipeline: Optional[Pipeline] = None,
-        state_path: str = "run/bot_state.json", tg: Optional[Telegram] = None,
+        self,
+        settings: Settings,
+        pipeline: Pipeline | None = None,
+        state_path: str = "run/bot_state.json",
+        tg: Telegram | None = None,
     ) -> None:
         self.settings = settings
         self.pipeline = pipeline or Pipeline(settings)
         self.state_path = state_path
         self.tg = tg or Telegram(settings.telegram_token)
         self.chat_id = settings.telegram_chat
-        self._last_key: Optional[str] = None
-        self._last_offset: Optional[int] = None
+        self._last_key: str | None = None
+        self._last_offset: int | None = None
+        self._pending_key: str | None = None
         self._primed = False
         self._load()
         # Preferences live in the state file so a restart keeps them, and a
@@ -221,6 +230,7 @@ class Bot:
                 state = json.load(fh)
             self._last_key = state.get("last_key")
             self._last_offset = state.get("last_offset")
+            self._pending_key = state.get("pending_key")
             self._tf_override = state.get("timeframes")
             self._rr_override = state.get("min_rr")
         except (OSError, ValueError):
@@ -228,16 +238,28 @@ class Bot:
 
     def _save(self) -> None:
         os.makedirs(os.path.dirname(self.state_path) or ".", exist_ok=True)
-        payload: dict = {"last_key": self._last_key, "last_offset": self._last_offset}
+        payload: dict = {
+            "last_key": self._last_key,
+            "last_offset": self._last_offset,
+            "pending_key": self._pending_key,
+        }
         if getattr(self, "_tf_override", None):
             payload["timeframes"] = list(self.settings.timeframes)
         if getattr(self, "_rr_override", None):
             payload["min_rr"] = self.settings.min_rr
+        # Written to a temp file and moved into place: a crash mid-write must
+        # not leave a half-state that the next start reads as truth.
+        tmp = f"{self.state_path}.tmp"
         try:
-            with open(self.state_path, "w", encoding="utf-8") as fh:
+            with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh)
+            os.replace(tmp, self.state_path)
         except OSError:
-            pass
+            try:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+            except OSError:
+                pass
 
     # ── identity ─────────────────────────────────────────────────────────
 
@@ -258,7 +280,7 @@ class Bot:
 
     # ── one cycle ────────────────────────────────────────────────────────
 
-    def tick(self, with_ai: bool = True) -> Optional[Result]:
+    def tick(self, with_ai: bool = True) -> Result | None:
         """Run one analysis and push a card if the idea is new. Returns the result.
 
         The automatic push is a *price* card and costs no model tokens: the AI
@@ -277,10 +299,23 @@ class Bot:
             self._save()
             return result
 
-        if key != self._last_key:
+        # A blackout withholds *new ideas*, not the price. During a high-impact
+        # release the card still goes out as a price read with the window
+        # flagged, but without the direction and setup: the rule is stated, so
+        # it is honoured rather than merely printed.
+        in_blackout = bool((result.news or {}).get("blackout", {}).get("active"))
+        withheld = in_blackout and key != "no-trade"
+
+        if key != self._last_key or (self._pending_key and not in_blackout):
             self._last_key = key
+            if withheld:
+                # Remember the idea so it is delivered once the window closes
+                # instead of being silently swallowed by the price card.
+                self._pending_key = key
+            else:
+                self._pending_key = None
             self._save()
-            text = format_price(result.spot, result.plan, result.news)
+            text = format_price(result.spot, None if withheld else result.plan, result.news)
             try:
                 ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
             except TelegramError as exc:
@@ -288,10 +323,12 @@ class Bot:
                 return result
             # The send result decides the log line: an unconditional "sent"
             # once made a rejected push look delivered.
-            if ok:
-                self._log(f"أُرسلت فكرة — {(result.plan or {}).get('direction', '?')}")
-            else:
+            if not ok:
                 self._log("فشل إرسال فكرة (رفض تيليجرام)")
+            elif withheld:
+                self._log("نافذة خبر — أُرسل السعر بلا فكرة جديدة")
+            else:
+                self._log(f"أُرسلت فكرة — {(result.plan or {}).get('direction', '?')}")
         return result
 
     # ── commands ─────────────────────────────────────────────────────────
@@ -379,8 +416,7 @@ class Bot:
             # Re-pin the panel whenever the help text is shown, so a fresh
             # /start always leaves a button within reach.
             if data in {"start", "help", "مساعدة"}:
-                self.tg.send(chat_id, PANEL_HINT, markdown=False,
-                             keyboard=reply_keyboard())
+                self.tg.send(chat_id, PANEL_HINT, markdown=False, keyboard=reply_keyboard())
         except TelegramError:
             pass
 
@@ -429,8 +465,10 @@ class Bot:
             f"المصادر: {', '.join(set(result.sources.values())) or '—'}",
         ]
         if result.spot:
-            lines.append(f"تحقق السعر: فرق {result.spot.get('max_divergence_pct')}% "
-                         f"({'موثوق' if result.spot.get('trusted') else 'مشكوك'})")
+            lines.append(
+                f"تحقق السعر: فرق {result.spot.get('max_divergence_pct')}% "
+                f"({'موثوق' if result.spot.get('trusted') else 'مشكوك'})"
+            )
         if result.errors:
             lines.append(f"أخطاء: {len(result.errors)}")
         return "\n".join(lines)
@@ -438,13 +476,25 @@ class Bot:
     def _respond(self, chat_id: str, text: str) -> None:
         command = text.split()[0].lower().lstrip("/")
         aliases = {
-            "تحليل": "analyse", "analysis": "analyse", "ta": "analyse",
-            "صفقة": "plan", "trade": "plan", "signal": "plan",
-            "أخبار": "news", "اخبار": "news", "news": "news",
-            "حالة": "status", "status": "status",
-            "تحديث": "refresh", "refresh": "refresh", "reload": "refresh",
-            "إعدادات": "settings", "اعدادات": "settings", "settings": "settings",
-            "menu": "menu", "قائمة": "menu",
+            "تحليل": "analyse",
+            "analysis": "analyse",
+            "ta": "analyse",
+            "صفقة": "plan",
+            "trade": "plan",
+            "signal": "plan",
+            "أخبار": "news",
+            "اخبار": "news",
+            "news": "news",
+            "حالة": "status",
+            "status": "status",
+            "تحديث": "refresh",
+            "refresh": "refresh",
+            "reload": "refresh",
+            "إعدادات": "settings",
+            "اعدادات": "settings",
+            "settings": "settings",
+            "menu": "menu",
+            "قائمة": "menu",
         }
         self._answer(chat_id, resolve_data(aliases.get(command, command)))
 
@@ -460,18 +510,18 @@ class Bot:
         Failure is silent: an unregistered menu is a cosmetic loss, and it must
         never stop the loop from starting.
         """
-        try:
-            self.tg.set_commands([
-                ("start", "القائمة والمساعدة"),
-                ("analyse", "قراءة SMC/ICT الكاملة"),
-                ("plan", "آخر صفقة أو حالة السوق"),
-                ("news", "التقويم والعناوين"),
-                ("status", "ملخّص سريع"),
-                ("refresh", "قراءة جديدة فوراً"),
-                ("settings", "الفريمات والحساسية"),
-            ])
-        except TelegramError:
-            pass
+        with contextlib.suppress(TelegramError):
+            self.tg.set_commands(
+                [
+                    ("start", "القائمة والمساعدة"),
+                    ("analyse", "قراءة SMC/ICT الكاملة"),
+                    ("plan", "آخر صفقة أو حالة السوق"),
+                    ("news", "التقويم والعناوين"),
+                    ("status", "ملخّص سريع"),
+                    ("refresh", "قراءة جديدة فوراً"),
+                    ("settings", "الفريمات والحساسية"),
+                ]
+            )
 
     def install_panel(self) -> bool:
         """Put the persistent panel at the bottom of the configured chat.
@@ -484,8 +534,7 @@ class Bot:
             self._log("لا يوجد TELEGRAM_CHAT_ID — بلا لوحة تحكم")
             return False
         try:
-            ok = self.tg.send(self.chat_id, PANEL_HINT, markdown=False,
-                              keyboard=reply_keyboard())
+            ok = self.tg.send(self.chat_id, PANEL_HINT, markdown=False, keyboard=reply_keyboard())
         except TelegramError as exc:
             self._log(f"تعذّر إنشاء لوحة التحكم ({exc})")
             return False

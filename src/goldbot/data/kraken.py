@@ -9,8 +9,6 @@ dark, so the bot can still describe structure when COMEX is shut.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ..models import Bar, Series
 from .base import Provider, ProviderError, clean_bars, http_get_json
 
@@ -57,16 +55,18 @@ class KrakenProvider(Provider):
                     volume=float(row[6] or 0.0),
                 )
             )
-        series = Series(timeframe=timeframe.upper(), bars=clean_bars(built)[-bars:], source=self.name)
+        series = Series(
+            timeframe=timeframe.upper(), bars=clean_bars(built)[-bars:], source=self.name
+        )
         if not series.bars:
             raise ProviderError("no usable bars")
         return series
 
-    def spot(self) -> Optional[float]:
+    def spot(self) -> float | None:
         try:
             payload = http_get_json(f"https://api.kraken.com/0/public/Ticker?pair={self.pair}")
             result = (payload or {}).get("result") or {}
-            node = next(iter(result.values()), {})
+            node: dict = next(iter(result.values()), {})
             close = node.get("c") or []
             return float(close[0]) if close else None
         except (ProviderError, TypeError, ValueError, StopIteration):

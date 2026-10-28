@@ -15,6 +15,6 @@ it exists to keep that answer honest.
     target is touched before the stop, on the bars that followed.
 """
 
-from .engine import Trade, BacktestReport, run_backtest, evaluate_trade
+from .engine import BacktestReport, Trade, evaluate_trade, run_backtest
 
 __all__ = ["Trade", "BacktestReport", "run_backtest", "evaluate_trade"]

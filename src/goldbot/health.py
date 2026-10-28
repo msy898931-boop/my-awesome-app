@@ -20,8 +20,8 @@ import json
 import threading
 import time
 import urllib.request
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable
 
 
 def start_health_server(port: int, status: Callable[[], dict]) -> ThreadingHTTPServer:

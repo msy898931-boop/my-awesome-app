@@ -12,26 +12,40 @@ from goldbot.strategy.risk import position_size
 
 
 def _facts(direction="buy", entry=4060.0, trend="bullish"):
-    other = "bearish" if trend == "bullish" else "bullish"
     frame = {
         "trend": trend,
         "last_close": entry,
         "atr": 12.0,
         "last_event": {"type": "CHoCH", "direction": trend, "level": entry, "time": 1, "index": 50},
         "premium_discount": {"zone": "discount" if trend == "bullish" else "premium"},
-        "liquidity": {"equal_highs": [{"price": entry + 40.0, "count": 2, "last_index": 40}],
-                      "equal_lows": [{"price": entry - 40.0, "count": 2, "last_index": 40}]},
+        "liquidity": {
+            "equal_highs": [{"price": entry + 40.0, "count": 2, "last_index": 40}],
+            "equal_lows": [{"price": entry - 40.0, "count": 2, "last_index": 40}],
+        },
         "sweeps": [],
-        "fair_value_gaps": [{"side": trend, "top": entry + 0.5, "bottom": entry - 0.5,
-                             "filled": False, "index": 50, "time": 1}],
+        "fair_value_gaps": [
+            {
+                "side": trend,
+                "top": entry + 0.5,
+                "bottom": entry - 0.5,
+                "filled": False,
+                "index": 50,
+                "time": 1,
+            }
+        ],
         "order_blocks": [],
         "last_swing_high": entry + 40.0,
         "last_swing_low": entry - 40.0,
     }
     return {
         "timeframes": {"H4": frame, "H1": frame, "M15": dict(frame, trend=trend)},
-        "confluence": {"bias": trend, "alignment": 0.66, "bullish_frames": 3,
-                       "bearish_frames": 0, "frames_read": 3},
+        "confluence": {
+            "bias": trend,
+            "alignment": 0.66,
+            "bullish_frames": 3,
+            "bearish_frames": 0,
+            "frames_read": 3,
+        },
     }
 
 
@@ -90,6 +104,7 @@ def test_min_rr_is_enforced():
 
 
 # ── regression guards for the three bugs that made the book lose ─────────
+
 
 def test_counter_bias_direction_is_refused():
     """A bullish book must not emit a sell, and vice versa.

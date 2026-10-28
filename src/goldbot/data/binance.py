@@ -17,8 +17,6 @@ answers 451 from some regions, the market-data host does not.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ..models import Bar, Series
 from .base import Provider, ProviderError, clean_bars, http_get_json
 
@@ -51,7 +49,7 @@ class BinanceProvider(Provider):
         # Walk backwards from now, one page at a time, until the request is
         # satisfied. Newest-first collection then reversed at the end.
         collected: list[Bar] = []
-        end_time: Optional[int] = None
+        end_time: int | None = None
         for _ in range(MAX_PAGES):
             need = wanted - len(collected)
             if need <= 0:
@@ -63,8 +61,7 @@ class BinanceProvider(Provider):
             rows = http_get_json(url)
             if not isinstance(rows, list) or not rows:
                 break
-            page = [self._bar(row) for row in rows]
-            page = [b for b in page if b is not None]
+            page: list[Bar] = [b for b in (self._bar(row) for row in rows) if b is not None]
             if not page:
                 break
             collected = page + collected
@@ -80,7 +77,7 @@ class BinanceProvider(Provider):
         return series
 
     @staticmethod
-    def _bar(row) -> Optional[Bar]:
+    def _bar(row) -> Bar | None:
         """One kline: ``[openTime, open, high, low, close, volume, ...]``."""
         try:
             return Bar(
@@ -94,7 +91,7 @@ class BinanceProvider(Provider):
         except (TypeError, ValueError, IndexError):
             return None
 
-    def spot(self) -> Optional[float]:
+    def spot(self) -> float | None:
         try:
             payload = http_get_json(f"{TICKER}?symbol={self.pair}")
             price = (payload or {}).get("price")

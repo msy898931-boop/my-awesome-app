@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from .base import Provider, ProviderError
 from .binance import BinanceProvider
-from .yahoo import YahooProvider
-from .kraken import KrakenProvider
-from .goldapi import GoldApiProvider
 from .feed import MarketFeed, build_feed
+from .goldapi import GoldApiProvider
+from .kraken import KrakenProvider
+from .yahoo import YahooProvider
 
 __all__ = [
     "Provider",

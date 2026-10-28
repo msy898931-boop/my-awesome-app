@@ -108,9 +108,7 @@ def test_menu_keyboard_shape_and_ascii_data():
 def test_pressing_a_button_answers_then_sends_with_keyboard():
     rec = _Recorder()
     bot = _bot(rec)
-    bot._handle_callback(
-        {"id": "CB1", "data": "status", "message": {"chat": {"id": "999"}}}
-    )
+    bot._handle_callback({"id": "CB1", "data": "status", "message": {"chat": {"id": "999"}}})
     assert ("answer", "CB1") in rec.calls
     assert ("typing", "999") in rec.calls
     assert len(rec.sent) == 1
@@ -136,8 +134,12 @@ def test_every_menu_button_renders_a_card_with_a_keyboard():
 def test_arabic_commands_still_map_to_their_latin_button():
     rec = _Recorder()
     bot = _bot(rec)
-    for arabic, latin in [("تحليل", "analyse"), ("صفقة", "plan"),
-                          ("أخبار", "news"), ("حالة", "status")]:
+    for arabic, _latin in [
+        ("تحليل", "analyse"),
+        ("صفقة", "plan"),
+        ("أخبار", "news"),
+        ("حالة", "status"),
+    ]:
         rec.sent.clear()
         bot._respond("999", f"/{arabic}")
         assert len(rec.sent) == 1, arabic
@@ -183,8 +185,7 @@ def test_settings_button_opens_the_grid_with_current_state():
     # every frame appears, plus the three sensitivity options
     for tf in ("M1", "M5", "M15", "M30", "H1", "H4", "D1"):
         assert any(tf in label for label in labels), tf
-    assert sum("حساسية" in label or "متوازنة" in label or "صارمة" in label
-               for label in labels) == 3
+    assert sum("حساسية" in label or "متوازنة" in label or "صارمة" in label for label in labels) == 3
 
 
 def test_toggling_a_frame_changes_the_settings_and_the_state_file():
@@ -306,13 +307,12 @@ def test_pressing_an_old_emoji_button_still_renders_a_card():
     from goldbot.telegram.bot import MENU
 
     for _, data in [x for row in MENU for x in row]:
-        emoji = next(label.split(" ", 1)[0] for label, d in
-                     [x for row in MENU for x in row] if d == data)
+        emoji = next(
+            label.split(" ", 1)[0] for label, d in [x for row in MENU for x in row] if d == data
+        )
         rec = _Recorder()
         bot = _bot(rec)
-        bot._handle_callback(
-            {"id": "CB", "data": emoji, "message": {"chat": {"id": "999"}}}
-        )
+        bot._handle_callback({"id": "CB", "data": emoji, "message": {"chat": {"id": "999"}}})
         assert len(rec.sent) == 1, emoji
         _, text, keyboard = rec.sent[0]
         assert "غير معروف" not in text, emoji
@@ -341,8 +341,7 @@ def test_a_failed_push_is_logged_as_a_failure(monkeypatch):
             return True
 
     lines: list[str] = []
-    bot = Bot(Settings(), state_path=os.path.join(tempfile.mkdtemp(), "s.json"),
-              tg=_Failing())
+    bot = Bot(Settings(), state_path=os.path.join(tempfile.mkdtemp(), "s.json"), tg=_Failing())
     bot._log = lines.append  # type: ignore[method-assign]
     bot._primed = True
     bot._last_key = "different"
@@ -475,8 +474,9 @@ def test_install_panel_sends_the_bottom_keyboard_to_the_configured_chat():
     from goldbot.telegram.bot import Bot
 
     rec = _Recorder()
-    bot = Bot(Settings(telegram_chat="555"), state_path=os.path.join(
-        tempfile.mkdtemp(), "s.json"), tg=rec)
+    bot = Bot(
+        Settings(telegram_chat="555"), state_path=os.path.join(tempfile.mkdtemp(), "s.json"), tg=rec
+    )
     assert bot.install_panel() is True
     chat_id, _, keyboard = rec.sent[0]
     assert chat_id == "555"
@@ -488,7 +488,8 @@ def test_install_panel_without_a_chat_id_is_not_fatal():
     from goldbot.telegram.bot import Bot
 
     rec = _Recorder()
-    bot = Bot(Settings(telegram_chat=""), state_path=os.path.join(
-        tempfile.mkdtemp(), "s.json"), tg=rec)
+    bot = Bot(
+        Settings(telegram_chat=""), state_path=os.path.join(tempfile.mkdtemp(), "s.json"), tg=rec
+    )
     assert bot.install_panel() is False
     assert rec.sent == []

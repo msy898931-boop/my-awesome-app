@@ -43,7 +43,7 @@ DAILY_429 = {
 MINUTE_429 = {
     "error": {
         "message": "Rate limit reached ... on tokens per minute (TPM): Limit 8000. "
-                   "Please try again in 20s.",
+        "Please try again in 20s.",
         "code": "rate_limit_exceeded",
     }
 }
@@ -55,14 +55,27 @@ def _http_error(payload: dict, code: int = 429) -> urllib.error.HTTPError:
 
 
 def _facts() -> dict:
-    return {"confluence": {"bias": "bullish", "alignment": 0.6,
-                           "bullish_frames": 3, "bearish_frames": 2, "frames_read": 5},
-            "timeframes": {"M15": {"trend": "bullish", "atr": 3.2,
-                                   "last_event": {"type": "CHoCH", "direction": "bullish"},
-                                   "premium_discount": {"zone": "premium"}}}}
+    return {
+        "confluence": {
+            "bias": "bullish",
+            "alignment": 0.6,
+            "bullish_frames": 3,
+            "bearish_frames": 2,
+            "frames_read": 5,
+        },
+        "timeframes": {
+            "M15": {
+                "trend": "bullish",
+                "atr": 3.2,
+                "last_event": {"type": "CHoCH", "direction": "bullish"},
+                "premium_discount": {"zone": "premium"},
+            }
+        },
+    }
 
 
 # ── reading the rate-limit body ──────────────────────────────────────────
+
 
 def test_http_reason_returns_detail_and_code():
     detail, code = _http_reason(_http_error(DAILY_429))
@@ -93,6 +106,7 @@ def test_the_condensed_reason_names_the_ceiling_and_the_wait():
 
 
 # ── the cooldown ─────────────────────────────────────────────────────────
+
 
 def test_a_daily_429_parks_the_model_instead_of_retrying_it():
     settings = Settings(groq_key="k", groq_model="m1", groq_fallbacks=())
@@ -136,6 +150,7 @@ def test_a_minute_limit_does_not_park_the_model():
 
 
 # ── the fallback card must not fake confidence ───────────────────────────
+
 
 def test_the_fallback_reports_no_confidence():
     result = Analyst(Settings(groq_key="")).analyse(_facts())

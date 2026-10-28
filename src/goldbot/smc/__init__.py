@@ -15,6 +15,6 @@ detected separately and never merged.
 """
 
 from .engine import FactSheet, build, timeframe_facts
-from .primitives import atr, swings, structure_events
+from .primitives import atr, structure_events, swings
 
 __all__ = ["FactSheet", "build", "timeframe_facts", "atr", "swings", "structure_events"]

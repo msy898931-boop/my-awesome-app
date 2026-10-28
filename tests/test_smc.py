@@ -7,11 +7,9 @@ structure while a wick does not, and a sweep is not a break.
 
 from __future__ import annotations
 
-from goldbot.models import Bar
+from conftest import make_bars
 from goldbot.smc.engine import build, timeframe_facts
 from goldbot.smc.primitives import atr, structure_events, swings
-
-from conftest import make_bars
 
 
 def test_atr_needs_enough_bars():
@@ -41,12 +39,12 @@ def test_body_close_breaks_structure_wick_does_not():
     bars = make_bars(
         [
             (100, 105, 99, 104),
-            (104, 110, 103, 108),   # swing high at 110
+            (104, 110, 103, 108),  # swing high at 110
             (108, 109, 106, 107),
             (107, 108, 105, 106),
-            (106, 112, 105, 108),   # wick to 112, closes 108: a sweep, not a break
+            (106, 112, 105, 108),  # wick to 112, closes 108: a sweep, not a break
             (108, 111, 107, 108),
-            (108, 115, 108, 114),   # body close 114: the real break
+            (108, 115, 108, 114),  # body close 114: the real break
             (114, 116, 113, 115),
             (115, 117, 114, 116),
         ]
@@ -64,8 +62,16 @@ def test_timeframe_facts_shape(trending_up):
 
     facts = timeframe_facts(Series(timeframe="M15", bars=trending_up, source="test"))
     assert facts is not None
-    for key in ("trend", "atr", "premium_discount", "liquidity", "sweeps",
-                "fair_value_gaps", "order_blocks", "sessions"):
+    for key in (
+        "trend",
+        "atr",
+        "premium_discount",
+        "liquidity",
+        "sweeps",
+        "fair_value_gaps",
+        "order_blocks",
+        "sessions",
+    ):
         assert key in facts
 
 

@@ -166,11 +166,17 @@ def collect(settings, timeframe):
         if fwd is None or ctrl is None:
             continue
         d = sign_of_move(side)
-        rows.append({
-            "tf": timeframe, "i": i, "side": side, "atr": atr_value,
-            "edge": d * (fwd - ctrl) / atr_value,
-            "zone": zone_at(bars, i), "trend": trend_at(bars, i),
-        })
+        rows.append(
+            {
+                "tf": timeframe,
+                "i": i,
+                "side": side,
+                "atr": atr_value,
+                "edge": d * (fwd - ctrl) / atr_value,
+                "zone": zone_at(bars, i),
+                "trend": trend_at(bars, i),
+            }
+        )
     return series, rows, bars
 
 
@@ -210,9 +216,11 @@ def main():
         n = len(series.bars)
         if rows:
             edges = [r["edge"] for r in rows]
-            print(f"  {tf:4s}: {n:4d} شمعة | كنسات={len(rows):3d} | "
-                  f"حافة={statistics.mean(edges):+.3f} ATR | "
-                  f"موجب={sum(1 for e in edges if e > 0) / len(edges) * 100:.0f}%")
+            print(
+                f"  {tf:4s}: {n:4d} شمعة | كنسات={len(rows):3d} | "
+                f"حافة={statistics.mean(edges):+.3f} ATR | "
+                f"موجب={sum(1 for e in edges if e > 0) / len(edges) * 100:.0f}%"
+            )
         else:
             print(f"  {tf:4s}: {n:4d} شمعة | كنسات=0")
         pooled.extend(rows)
@@ -237,8 +245,11 @@ def main():
 
     print("\n== حسب المنطقة ==")
     for side in ("sell_side_taken", "buy_side_taken"):
-        good = (lambda z: z is not None and z < 0.38) if side == "sell_side_taken" \
+        good = (
+            (lambda z: z is not None and z < 0.38)
+            if side == "sell_side_taken"
             else (lambda z: z is not None and z > 0.62)
+        )
         sub = [r for r in pooled if r["side"] == side and good(r["zone"])]
         describe([(r["edge"], r["edge"] > 0) for r in sub], f"{side} في منطقته")
         sub = [r for r in pooled if r["side"] == side and not good(r["zone"])]
@@ -247,8 +258,11 @@ def main():
     print("\n== الخلية التي يتداولها البوت فعلاً: كنس + اتجاه + منطقة ==")
     for side in ("sell_side_taken", "buy_side_taken"):
         want = "bullish" if side == "sell_side_taken" else "bearish"
-        good = (lambda z: z is not None and z < 0.38) if side == "sell_side_taken" \
+        good = (
+            (lambda z: z is not None and z < 0.38)
+            if side == "sell_side_taken"
             else (lambda z: z is not None and z > 0.62)
+        )
         sub = [r for r in pooled if r["side"] == side and r["trend"] == want and good(r["zone"])]
         describe([(r["edge"], r["edge"] > 0) for r in sub], f"{side} كامل الشروط")
 
@@ -256,9 +270,11 @@ def main():
     for side in ("sell_side_taken", "buy_side_taken"):
         sub = [r["edge"] for r in pooled if r["side"] == side]
         if sub:
-            print(f"  {side:17s}: n={len(sub):3d} | حافة={statistics.mean(sub):+.3f} | "
-                  f"وسيط={statistics.median(sub):+.3f} | "
-                  f"موجب={sum(1 for e in sub if e > 0) / len(sub) * 100:.0f}%")
+            print(
+                f"  {side:17s}: n={len(sub):3d} | حافة={statistics.mean(sub):+.3f} | "
+                f"وسيط={statistics.median(sub):+.3f} | "
+                f"موجب={sum(1 for e in sub if e > 0) / len(sub) * 100:.0f}%"
+            )
 
     print("\n== ثبات الإشارة عبر الفريمات (هل نفس الاتجاه في كل فريم؟) ==")
     for side in ("sell_side_taken", "buy_side_taken"):
@@ -271,31 +287,48 @@ def main():
     print("\n== الخلية الواعدة وحدها عبر الفريمات ==")
     print("   كنس القمم داخل premium (فرضية البيع). يجب أن تثبت في كل فريم.")
     for tf in ("H4", "H1", "M30", "M15"):
-        sub = [r for r in pooled
-               if r["tf"] == tf and r["side"] == "buy_side_taken"
-               and r["zone"] is not None and r["zone"] > 0.62]
+        sub = [
+            r
+            for r in pooled
+            if r["tf"] == tf
+            and r["side"] == "buy_side_taken"
+            and r["zone"] is not None
+            and r["zone"] > 0.62
+        ]
         if sub:
             e = [r["edge"] for r in sub]
-            print(f"  {tf:4s}: n={len(e):3d} | حافة={statistics.mean(e):+.3f} | "
-                  f"وسيط={statistics.median(e):+.3f} | موجب={sum(1 for x in e if x > 0) / len(e) * 100:.0f}%")
+            print(
+                f"  {tf:4s}: n={len(e):3d} | حافة={statistics.mean(e):+.3f} | "
+                f"وسيط={statistics.median(e):+.3f} | موجب={sum(1 for x in e if x > 0) / len(e) * 100:.0f}%"
+            )
         else:
             print(f"  {tf:4s}: لا عيّنة")
 
     print("\n== عتبة المنطقة: أين ينقلب السلوك؟ (كنس القمم) ==")
     for thr in (0.5, 0.55, 0.6, 0.62, 0.7, 0.8):
-        sub = [r["edge"] for r in pooled
-               if r["side"] == "buy_side_taken" and r["zone"] is not None and r["zone"] > thr]
+        sub = [
+            r["edge"]
+            for r in pooled
+            if r["side"] == "buy_side_taken" and r["zone"] is not None and r["zone"] > thr
+        ]
         if sub:
-            print(f"  premium > {thr}: n={len(sub):3d} | حافة={statistics.mean(sub):+.3f} | "
-                  f"موجب={sum(1 for x in sub if x > 0) / len(sub) * 100:.0f}%")
+            print(
+                f"  premium > {thr}: n={len(sub):3d} | حافة={statistics.mean(sub):+.3f} | "
+                f"موجب={sum(1 for x in sub if x > 0) / len(sub) * 100:.0f}%"
+            )
 
     print("\n== عتبة المنطقة: كنس القيعان ==")
     for thr in (0.5, 0.45, 0.4, 0.38, 0.3, 0.2):
-        sub = [r["edge"] for r in pooled
-               if r["side"] == "sell_side_taken" and r["zone"] is not None and r["zone"] < thr]
+        sub = [
+            r["edge"]
+            for r in pooled
+            if r["side"] == "sell_side_taken" and r["zone"] is not None and r["zone"] < thr
+        ]
         if sub:
-            print(f"  discount < {thr}: n={len(sub):3d} | حافة={statistics.mean(sub):+.3f} | "
-                  f"موجب={sum(1 for x in sub if x > 0) / len(sub) * 100:.0f}%")
+            print(
+                f"  discount < {thr}: n={len(sub):3d} | حافة={statistics.mean(sub):+.3f} | "
+                f"موجب={sum(1 for x in sub if x > 0) / len(sub) * 100:.0f}%"
+            )
 
     print("\n== تحذير التكرار: نفس الحدث يظهر في عدة فريمات ==")
     print("   H4 و M15 يتقاطعان زمنياً، فالملاحظات ليست مستقلة والعدد متضخّم.")
@@ -303,39 +336,49 @@ def main():
     print("\n== الاختبار الحاسم: هل الكنسة تضيف فوق شرط المنطقة؟ ==")
     print("   المقارنة مع شمعات بلا كنسة في نفس المنطقة، بنفس الطريقة.")
     for tf in ("H4", "H1", "M30", "M15"):
-        feed = build_feed(settings)
         series, _, bars = collect(settings, tf)
         if series is None:
             continue
         atr_value = atr(bars)
         idx = {i for i, _, _ in find_sweeps(bars)}
-        sweep_edges = [r["edge"] for r in pooled
-                       if r["tf"] == tf and r["side"] == "buy_side_taken"
-                       and r["zone"] is not None and r["zone"] > 0.62]
-        base = matched_baseline(bars, atr_value, idx,
-                                lambda z: z is not None and z > 0.62, -1)
+        sweep_edges = [
+            r["edge"]
+            for r in pooled
+            if r["tf"] == tf
+            and r["side"] == "buy_side_taken"
+            and r["zone"] is not None
+            and r["zone"] > 0.62
+        ]
+        base = matched_baseline(bars, atr_value, idx, lambda z: z is not None and z > 0.62, -1)
         s = f"{statistics.mean(sweep_edges):+.3f}(n={len(sweep_edges)})" if sweep_edges else "—"
         b = f"{statistics.mean(base):+.3f}(n={len(base)})" if base else "—"
-        lift = (statistics.mean(sweep_edges) - statistics.mean(base)) if sweep_edges and base else None
+        lift = (
+            (statistics.mean(sweep_edges) - statistics.mean(base)) if sweep_edges and base else None
+        )
         lift_s = f"{lift:+.3f}" if lift is not None else "—"
         print(f"  {tf:4s}: كنسة={s} | بلا كنسة={b} | الفرق={lift_s}")
 
     print("\n== نفس الاختبار لكن داخل discount، لكشف المرآة ==")
     for tf in ("H4", "H1", "M30", "M15"):
-        feed = build_feed(settings)
         series, _, bars = collect(settings, tf)
         if series is None:
             continue
         atr_value = atr(bars)
         idx = {i for i, _, _ in find_sweeps(bars)}
-        sweep_edges = [r["edge"] for r in pooled
-                       if r["tf"] == tf and r["side"] == "sell_side_taken"
-                       and r["zone"] is not None and r["zone"] < 0.38]
-        base = matched_baseline(bars, atr_value, idx,
-                                lambda z: z is not None and z < 0.38, +1)
+        sweep_edges = [
+            r["edge"]
+            for r in pooled
+            if r["tf"] == tf
+            and r["side"] == "sell_side_taken"
+            and r["zone"] is not None
+            and r["zone"] < 0.38
+        ]
+        base = matched_baseline(bars, atr_value, idx, lambda z: z is not None and z < 0.38, +1)
         s = f"{statistics.mean(sweep_edges):+.3f}(n={len(sweep_edges)})" if sweep_edges else "—"
         b = f"{statistics.mean(base):+.3f}(n={len(base)})" if base else "—"
-        lift = (statistics.mean(sweep_edges) - statistics.mean(base)) if sweep_edges and base else None
+        lift = (
+            (statistics.mean(sweep_edges) - statistics.mean(base)) if sweep_edges and base else None
+        )
         lift_s = f"{lift:+.3f}" if lift is not None else "—"
         print(f"  {tf:4s}: كنسة={s} | بلا كنسة={b} | الفرق={lift_s}")
 

@@ -39,8 +39,7 @@ class Telegram:
         self.token = token
         self.timeout = timeout
 
-    def _call(self, method: str, payload: dict | None = None,
-              timeout: float | None = None) -> dict:
+    def _call(self, method: str, payload: dict | None = None, timeout: float | None = None) -> dict:
         url = API.format(token=self.token, method=method)
         data = json.dumps(payload or {}).encode()
         req = urllib.request.Request(
@@ -61,8 +60,9 @@ class Telegram:
     def me(self) -> dict:
         return self._call("getMe")
 
-    def send(self, chat_id: str, text: str, markdown: bool = True,
-             keyboard: dict | None = None) -> bool:
+    def send(
+        self, chat_id: str, text: str, markdown: bool = True, keyboard: dict | None = None
+    ) -> bool:
         """Send a message, splitting on Telegram's 4096-character limit.
 
         A long analysis is sent in parts rather than truncated, because a
@@ -126,9 +126,7 @@ class Telegram:
         """Publish the ``/`` command menu for the default scope."""
         if not commands:
             return False
-        payload = {
-            "commands": [{"command": c, "description": d} for c, d in commands]
-        }
+        payload = {"commands": [{"command": c, "description": d} for c, d in commands]}
         try:
             self._call("setMyCommands", payload)
             return True

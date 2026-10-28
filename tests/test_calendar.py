@@ -15,10 +15,22 @@ from goldbot.news.window import digest
 from goldbot.telegram.format import format_news
 
 ROWS = [
-    {"title": "Federal Funds Rate", "country": "USD", "impact": "High",
-     "date": "2026-10-28T14:00:00-04:00", "forecast": "4.00%", "previous": "4.00%"},
-    {"title": "German GfK Consumer Climate", "country": "EUR", "impact": "Low",
-     "date": "2026-10-28T03:00:00-04:00", "forecast": "-1.0", "previous": "-0.5"},
+    {
+        "title": "Federal Funds Rate",
+        "country": "USD",
+        "impact": "High",
+        "date": "2026-10-28T14:00:00-04:00",
+        "forecast": "4.00%",
+        "previous": "4.00%",
+    },
+    {
+        "title": "German GfK Consumer Climate",
+        "country": "EUR",
+        "impact": "Low",
+        "date": "2026-10-28T03:00:00-04:00",
+        "forecast": "-1.0",
+        "previous": "-0.5",
+    },
 ]
 
 
@@ -29,6 +41,7 @@ class _Resp:
 
     def read(self):
         import json
+
         return json.dumps(self._payload).encode()
 
     def __enter__(self):
@@ -50,13 +63,12 @@ def test_a_good_fetch_reports_ok_and_parses_events():
 
 def test_a_429_is_reported_not_swallowed():
     def boom():
-        raise urllib.error.HTTPError(
-            "u", 429, "Too Many Requests", {"Retry-After": "30"}, None
-        )
+        raise urllib.error.HTTPError("u", 429, "Too Many Requests", {"Retry-After": "30"}, None)
 
     feed = CalendarFeed()
     # Exercise the real _fetch, with urlopen raising as Cloudflare does.
     import goldbot.news.calendar as cal
+
     orig = cal.urllib.request.urlopen
     cal.urllib.request.urlopen = lambda *a, **k: boom()
     try:
@@ -93,9 +105,7 @@ def test_backoff_blocks_the_next_attempt_after_a_429():
     feed = CalendarFeed()
 
     def rate_limited(*a, **k):
-        raise urllib.error.HTTPError(
-            "u", 429, "Too Many Requests", {"Retry-After": "30"}, None
-        )
+        raise urllib.error.HTTPError("u", 429, "Too Many Requests", {"Retry-After": "30"}, None)
 
     orig = cal.urllib.request.urlopen
     cal.urllib.request.urlopen = rate_limited
@@ -149,6 +159,7 @@ def test_the_card_never_prints_a_bare_none_for_a_missing_forecast(monkeypatch):
 
         def high_impact(self):
             from goldbot.news.calendar import _parse
+
             return [e for e in (_parse(r) for r in ROWS) if e]
 
     monkeypatch.setattr("goldbot.news.window._feeds", lambda: (_Live(), _Rss()))

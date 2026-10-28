@@ -13,10 +13,24 @@ from goldbot.news.calendar import Event, _parse, _to_float
 from goldbot.news.window import blackout
 
 
-def _event(title="Non-Farm Payrolls", country="USD", impact="high", when=1000,
-           forecast=180.0, previous=170.0, actual=None):
-    return Event(title=title, country=country, impact=impact, time=when,
-                 forecast=forecast, previous=previous, actual=actual)
+def _event(
+    title="Non-Farm Payrolls",
+    country="USD",
+    impact="high",
+    when=1000,
+    forecast=180.0,
+    previous=170.0,
+    actual=None,
+):
+    return Event(
+        title=title,
+        country=country,
+        impact=impact,
+        time=when,
+        forecast=forecast,
+        previous=previous,
+        actual=actual,
+    )
 
 
 def test_blackout_inactive_with_no_events():
@@ -90,10 +104,16 @@ def test_parse_rejects_incomplete_rows():
 
 
 def test_parse_accepts_a_valid_row():
-    event = _parse({
-        "title": "CPI m/m", "country": "USD", "impact": "High",
-        "date": "2024-01-01T08:30:00-05:00", "forecast": "0.3%", "previous": "0.2%",
-    })
+    event = _parse(
+        {
+            "title": "CPI m/m",
+            "country": "USD",
+            "impact": "High",
+            "date": "2024-01-01T08:30:00-05:00",
+            "forecast": "0.3%",
+            "previous": "0.2%",
+        }
+    )
     assert event is not None
     assert event.impact == "high"
     assert event.forecast == 0.3
@@ -106,12 +126,16 @@ def test_parse_json_handles_fenced_output():
 
 
 def test_validate_trade_drops_wrong_side_stop():
-    _, reasons = _validate_trade({"direction": "buy", "entry": 100, "stop": 101, "target": 110}, 2.0)
+    _, reasons = _validate_trade(
+        {"direction": "buy", "entry": 100, "stop": 101, "target": 110}, 2.0
+    )
     assert reasons and "الوقف" in reasons[0]
 
 
 def test_validate_trade_drops_low_rr():
-    _, reasons = _validate_trade({"direction": "buy", "entry": 100, "stop": 99, "target": 100.5}, 2.0)
+    _, reasons = _validate_trade(
+        {"direction": "buy", "entry": 100, "stop": 99, "target": 100.5}, 2.0
+    )
     assert reasons and "المخاطرة" in reasons[0]
 
 

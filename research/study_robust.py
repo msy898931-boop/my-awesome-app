@@ -28,9 +28,8 @@ import sys
 
 sys.path.insert(0, "src")
 
-from goldbot.config import load_settings
 from goldbot.backtest.engine import _walk
-from goldbot.data.feed import build_feed
+from goldbot.config import load_settings
 
 BOOTSTRAP = 5000
 SEED = 7
@@ -172,9 +171,8 @@ def main():
             continue
         bars = series[prim].bars
         stamps = [b.time for b in bars]
-        import bisect
 
-        def regime_at(t):
+        def regime_at(t, stamps=stamps, bars=bars):
             idx = bisect.bisect_left(stamps, t)
             lo = max(0, idx - 40)
             hi = min(len(bars) - 1, idx + 40)
@@ -190,8 +188,10 @@ def main():
             for label, grp in (("سوق صاعد", rising), ("سوق هابط", falling)):
                 if len(grp) >= 20:
                     rs = [t.r_multiple for t in grp]
-                    print(f"    {d:4s} {label}: n={len(rs):4d} avgR={statistics.mean(rs):+.3f} "
-                          f"PF={profit_factor(rs):.2f}")
+                    print(
+                        f"    {d:4s} {label}: n={len(rs):4d} avgR={statistics.mean(rs):+.3f} "
+                        f"PF={profit_factor(rs):.2f}"
+                    )
 
     print("\n== الحكم النهائي ==")
     print("   الحافة التي تنجو من كل ما سبق تُقبل. ما دون ذلك يُرفض.")
@@ -210,20 +210,26 @@ def main():
             lo, hi = max(0, i - 40), min(len(bars) - 1, i + 40)
             return bars[hi].close - bars[lo].close if hi > lo else 0.0
 
-        for label, grp in (("سوق صاعد", [t for t in cell if regime(t) > 0]),
-                           ("سوق هابط", [t for t in cell if regime(t) <= 0])):
+        for label, grp in (
+            ("سوق صاعد", [t for t in cell if regime(t) > 0]),
+            ("سوق هابط", [t for t in cell if regime(t) <= 0]),
+        ):
             if len(grp) >= 10:
                 rs = [t.r_multiple for t in grp]
                 lo, hi = bootstrap_ci(rs)
-                print(f"    {label}: n={len(rs):3d} avgR={statistics.mean(rs):+.3f} "
-                      f"PF={profit_factor(rs):.2f} CI=[{lo:+.3f},{hi:+.3f}]")
+                print(
+                    f"    {label}: n={len(rs):3d} avgR={statistics.mean(rs):+.3f} "
+                    f"PF={profit_factor(rs):.2f} CI=[{lo:+.3f},{hi:+.3f}]"
+                )
         ordered = sorted(cell, key=lambda t: t.time)
         mid = len(ordered) // 2
         for label, grp in (("النصف الأول", ordered[:mid]), ("النصف الثاني", ordered[mid:])):
             rs = [t.r_multiple for t in grp]
             if len(rs) >= 10:
-                print(f"    {label}: n={len(rs):3d} avgR={statistics.mean(rs):+.3f} "
-                      f"PF={profit_factor(rs):.2f}")
+                print(
+                    f"    {label}: n={len(rs):3d} avgR={statistics.mean(rs):+.3f} "
+                    f"PF={profit_factor(rs):.2f}"
+                )
         print("   لو بقيت موجبة في السوق الهابطة وفي النصفين، فهي حافة حقيقية.")
 
 

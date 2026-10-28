@@ -15,13 +15,13 @@ can tell "the model said so" from "the code measured it".
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 from ..config import Settings
 from .prompt import SYSTEM_PROMPT, build_prompt
@@ -53,7 +53,7 @@ class AnalysisResult:
     validated: bool = False
     market_state: str = ""
     bias: str = "neutral"
-    setup: Optional[str] = None
+    setup: str | None = None
     reasoning: str = ""
     confidence: float = 0.0
     trade: dict = field(default_factory=dict)
@@ -76,7 +76,7 @@ class Analyst:
         self._cooldowns: dict[str, float] = {}
 
     def analyse(
-        self, facts: dict, news: Optional[dict] = None, min_rr: Optional[float] = None
+        self, facts: dict, news: dict | None = None, min_rr: float | None = None
     ) -> AnalysisResult:
         if not self.settings.ai_enabled:
             return self._fallback(facts, "لم يُضبط مفتاح الذكاء الاصطناعي")
@@ -112,7 +112,7 @@ class Analyst:
                 seen.append(m)
         return seen
 
-    def _call(self, facts: dict, news: Optional[dict]) -> str:
+    def _call(self, facts: dict, news: dict | None) -> str:
         """Ask each model in the chain until one answers.
 
         Groq meters quota per model, so a spent budget on the primary is not
@@ -140,11 +140,9 @@ class Analyst:
                     if exc.code == 429:
                         if code == "rate_limit_exceeded" and _is_daily(exc):
                             self._park(model, exc)
-                            last_error = RuntimeError(
-                                f"{model}: نفدت الحصة اليومية ({detail})")
+                            last_error = RuntimeError(f"{model}: نفدت الحصة اليومية ({detail})")
                         else:
-                            last_error = RuntimeError(
-                                f"{model}: تجاوز حد الاستخدام ({detail})")
+                            last_error = RuntimeError(f"{model}: تجاوز حد الاستخدام ({detail})")
                         continue  # a different model has its own quota
                     raise RuntimeError(f"{model}: {detail}") from exc
                 except Exception as exc:
@@ -257,10 +255,10 @@ def _error_payload(exc: urllib.error.HTTPError) -> dict:
         payload = payload if isinstance(payload, dict) else {}
     except Exception:
         payload = {}
-    try:
-        exc._goldbot_body = payload
-    except Exception:
-        pass
+    # Best-effort cache on the exception object; some HTTPError subclasses
+    # forbid attribute assignment, and losing the cache is not fatal.
+    with contextlib.suppress(Exception):
+        exc._goldbot_body = payload  # type: ignore[attr-defined]
     return payload
 
 
@@ -287,7 +285,9 @@ def _short_rate_message(message: str) -> str:
     reader needs is which ceiling was hit and when it lifts.
     """
     low = message.lower()
-    kind = "الحصة اليومية" if "per day" in low else ("حد الدقيقة" if "per minute" in low else "الحد")
+    kind = (
+        "الحصة اليومية" if "per day" in low else ("حد الدقيقة" if "per minute" in low else "الحد")
+    )
     wait = ""
     match = re.search(r"try again in ([0-9.]+[a-z]+(?:[0-9.]+[a-z]+)?)", low)
     if match:
@@ -313,7 +313,7 @@ def _parse_retry_seconds(exc: urllib.error.HTTPError) -> float:
     return 0.0
 
 
-def _parse_json(text: str) -> Optional[dict]:
+def _parse_json(text: str) -> dict | None:
     """Parse the model's reply, tolerating a fenced code block around it."""
     if not text:
         return None
@@ -356,10 +356,13 @@ def _validate_trade(trade: dict, min_rr: float) -> tuple[dict, list[str]]:
     if direction not in {"buy", "sell"}:
         return {"direction": "none"}, []
 
+    raw = (trade.get("entry"), trade.get("stop"), trade.get("target"))
+    if any(v is None or v == "" for v in raw):
+        return {"direction": "none"}, ["الصفقة بلا أسعار صالحة — أُسقطت"]
     try:
-        entry = float(trade.get("entry"))
-        stop = float(trade.get("stop"))
-        target = float(trade.get("target"))
+        entry = float(str(raw[0]))
+        stop = float(str(raw[1]))
+        target = float(str(raw[2]))
     except (TypeError, ValueError):
         return {"direction": "none"}, ["الصفقة بلا أسعار صالحة — أُسقطت"]
 
