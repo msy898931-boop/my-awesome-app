@@ -35,10 +35,10 @@ source = ["goldbot"]
 branch = false
 
 [tool.coverage.report]
-# The floor sits a point under the measured 79% so ordinary refactoring does not
+# The floor sits a point under the measured 95% so ordinary refactoring does not
 # redden CI, while a real drop — a whole module losing its tests — does. Raise it
 # as coverage rises; never lower it to make a red run green.
-fail_under = 78
+fail_under = 94
 show_missing = true
 skip_covered = false
 

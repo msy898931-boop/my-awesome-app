@@ -140,12 +140,12 @@ down.
 ```bash
 make check                     # ruff + format + mypy + pytest (what CI runs)
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 251 tests
+python -m pytest tests/ -q     # 465 tests
 ```
 
-CI runs the suite under `coverage` and **fails below a floor of 78%** of
-`src/goldbot` (measured 79% on the current revision), so the number cannot drift
-away from the truth unnoticed.
+CI runs the suite under `coverage` and **fails below a floor of 94%** of
+`src/goldbot` (measured 95% on the current revision, no module under 85%), so the
+number cannot drift away from the truth unnoticed.
 
 ---
 
@@ -220,7 +220,7 @@ src/goldbot/
   telegram/         client, formatting, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
-tests/              251 tests
+tests/              465 tests
 ```
 
 ---

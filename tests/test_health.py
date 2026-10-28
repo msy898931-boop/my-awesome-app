@@ -85,3 +85,52 @@ def test_ping_once_does_nothing_without_a_url(monkeypatch):
 
     monkeypatch.setattr(urllib.request, "urlopen", boom)
     assert ping_once("") is False
+
+
+def test_start_self_ping_does_nothing_without_a_url():
+    """A blank URL must not start a thread that pings nothing forever."""
+    import threading
+
+    from goldbot.health import start_self_ping
+
+    before = threading.active_count()
+    start_self_ping("")
+    assert threading.active_count() == before
+
+
+def test_start_self_ping_starts_a_daemon_thread(monkeypatch):
+    """The thread must be a daemon, or a stop signal could never exit."""
+    import threading
+
+    import goldbot.health as health
+
+    started: list[dict] = []
+    real_thread = threading.Thread
+
+    class _Spy(real_thread):
+        def __init__(self, *a, **k):
+            started.append(k)
+            super().__init__(*a, **k)
+
+    monkeypatch.setattr(health.threading, "Thread", _Spy)
+    # The loop body sleeps before its first ping; a long interval means it will
+    # not fire during the test, so no network call happens.
+    health.start_self_ping("https://example.onrender.com", interval=3600)
+    assert started and started[0].get("daemon") is True
+
+
+def test_the_self_ping_loop_calls_ping_once(monkeypatch):
+    """The thread body must actually ping; the interval is shortened to prove it."""
+    import time
+
+    import goldbot.health as health
+
+    hits: list[str] = []
+    monkeypatch.setattr(health, "ping_once", lambda url: hits.append(url) or True)
+    monkeypatch.setattr(health, "SELF_PING_SECONDS", 0.01)
+
+    health.start_self_ping("https://example.onrender.com", interval=0.01)
+    deadline = time.time() + 2
+    while not hits and time.time() < deadline:
+        time.sleep(0.02)
+    assert hits, "the loop never pinged"

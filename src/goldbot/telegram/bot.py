@@ -242,7 +242,6 @@ class Bot:
             pass
 
     def _save(self) -> None:
-        os.makedirs(os.path.dirname(self.state_path) or ".", exist_ok=True)
         payload: dict = {
             "last_key": self._last_key,
             "last_offset": self._last_offset,
@@ -253,9 +252,14 @@ class Bot:
         if getattr(self, "_rr_override", None):
             payload["min_rr"] = self.settings.min_rr
         # Written to a temp file and moved into place: a crash mid-write must
-        # not leave a half-state that the next start reads as truth.
+        # not leave a half-state that the next start reads as truth. The whole
+        # thing is guarded, ``makedirs`` included — a bad state path (a
+        # read-only mount, a directory removed under us) must not raise out of
+        # here, because ``handle_updates`` calls this and the loop only catches
+        # ``TelegramError``: an escaping ``OSError`` would stop the bot dead.
         tmp = f"{self.state_path}.tmp"
         try:
+            os.makedirs(os.path.dirname(self.state_path) or ".", exist_ok=True)
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh)
             os.replace(tmp, self.state_path)
