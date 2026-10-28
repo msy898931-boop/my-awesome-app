@@ -16,6 +16,7 @@ can tell "the model said so" from "the code measured it".
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -31,6 +32,11 @@ TIMEOUT = 45.0
 # sheet plus a reasoning reply lands near that. One short wait clears the
 # window rather than failing the run.
 RETRY_BACKOFF = 20.0
+# A per-*day* limit is not cleared by waiting 20 seconds. Once a model reports
+# one, every further call is a guaranteed 429, so the model is parked until the
+# window it named has passed. ``_parse_retry_seconds`` reads the duration out of
+# Groq's message; this is the fallback when it cannot be parsed.
+DAILY_COOLDOWN = 30 * 60.0
 # Groq sits behind Cloudflare, which rejects urllib's default User-Agent *and*
 # a custom bot string with a 403 (error 1010). Only a browser-like UA passes.
 USER_AGENT = (
@@ -64,6 +70,10 @@ class Analyst:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        # model -> epoch when its daily cooldown expires. Lives on the instance,
+        # and the bot builds one Analyst for its lifetime, so a parked model
+        # stays parked across ticks instead of being retried every minute.
+        self._cooldowns: dict[str, float] = {}
 
     def analyse(
         self, facts: dict, news: Optional[dict] = None, min_rr: Optional[float] = None
@@ -73,7 +83,7 @@ class Analyst:
         try:
             reply = self._call(facts, news)
         except Exception as exc:  # transport must never take the engine down
-            return self._fallback(facts, f"تعذّر الوصول للنموذج: {type(exc).__name__}")
+            return self._fallback(facts, f"تعذّر الوصول للنموذج: {exc}")
 
         parsed = _parse_json(reply)
         if parsed is None:
@@ -106,28 +116,59 @@ class Analyst:
         """Ask each model in the chain until one answers.
 
         Groq meters quota per model, so a spent budget on the primary is not
-        fatal: the next model in the chain is tried. A 429 on *every* model
-        means the shared per-minute ceiling is hit, and a short wait usually
-        clears it, so one backed-off retry is made before giving up.
+        fatal: the next model in the chain is tried. Two kinds of 429 are
+        distinguished, because they need opposite responses:
+
+          * **per-minute** — waiting clears it, so one backed-off retry is made;
+          * **per-day** — waiting 20s does nothing. The model is parked until the
+            window it named has passed, and the loop stops re-trying it. Retrying
+            a daily limit every minute is how a bot burns a day's quota in an
+            hour and then looks broken for the rest of the day.
         """
         prompt = build_prompt(facts, news)
-        models = self._models()
+        models = [m for m in self._models() if not self._parked(m)]
+        if not models:
+            raise RuntimeError(self._parked_reason())
+
         last_error: Exception | None = None
         for attempt in range(2):
             for model in models:
                 try:
                     return self._call_model(model, prompt)
                 except urllib.error.HTTPError as exc:
-                    detail = _http_reason(exc)
+                    detail, code = _http_reason(exc)
                     if exc.code == 429:
-                        last_error = RuntimeError(f"{model}: تجاوز حد الاستخدام ({detail})")
+                        if code == "rate_limit_exceeded" and _is_daily(exc):
+                            self._park(model, exc)
+                            last_error = RuntimeError(
+                                f"{model}: نفدت الحصة اليومية ({detail})")
+                        else:
+                            last_error = RuntimeError(
+                                f"{model}: تجاوز حد الاستخدام ({detail})")
                         continue  # a different model has its own quota
                     raise RuntimeError(f"{model}: {detail}") from exc
                 except Exception as exc:
-                    last_error = RuntimeError(f"{model}: {type(exc).__name__}")
+                    last_error = RuntimeError(f"{model}: {type(exc).__name__}: {exc}")
             if attempt == 0:
                 time.sleep(RETRY_BACKOFF)
         raise last_error or RuntimeError("no model available")
+
+    def _parked(self, model: str) -> bool:
+        """Whether a model is inside a cooldown set by an earlier daily limit."""
+        until = self._cooldowns.get(model, 0.0)
+        if until <= time.time():
+            self._cooldowns.pop(model, None)
+            return False
+        return True
+
+    def _park(self, model: str, exc: urllib.error.HTTPError) -> None:
+        wait = _parse_retry_seconds(exc) or DAILY_COOLDOWN
+        self._cooldowns[model] = time.time() + wait
+
+    def _parked_reason(self) -> str:
+        soonest = min(self._cooldowns.values()) if self._cooldowns else 0.0
+        mins = max(1, int((soonest - time.time()) / 60)) if soonest else 0
+        return f"كل الموديلات نفدت حصتها اليومية — تُستأنف بعد ~{mins} دقيقة"
 
     def _call_model(self, model: str, prompt: str) -> str:
         body = json.dumps(
@@ -170,12 +211,14 @@ class Analyst:
 
         This is what the bot shows when there is no key or the model is down:
         a real summary of real structure, with no invented number and no
-        fabricated confidence.
+        fabricated confidence. ``confidence`` stays 0 so the card omits it —
+        frame agreement is not a probability of success, and labelling it as
+        one put a fake "61%" next to a real "3 of 5 frames" saying the same
+        number twice.
         """
         confluence = facts.get("confluence", {})
         frames = facts.get("timeframes", {})
         bias = confluence.get("bias", "neutral")
-        alignment = confluence.get("alignment", 0.0)
         lines = [
             f"قراءة الحسابات (بدون ذكاء اصطناعي): {reason}",
             f"الانحياز العام: {bias} — توافق {confluence.get('bullish_frames', 0)} صاعد / "
@@ -193,23 +236,81 @@ class Analyst:
             validated=False,
             market_state="\n".join(lines),
             bias=bias,
-            confidence=round(float(alignment), 2) if isinstance(alignment, (int, float)) else 0.0,
+            confidence=0.0,
             warnings=["هذه قراءة حسابية فقط، بلا تحليل ذكاء اصطناعي"],
             error=reason,
         )
 
 
-def _http_reason(exc: urllib.error.HTTPError) -> str:
-    """Pull Groq's own error code out of the body, for a readable reason."""
+def _error_payload(exc: urllib.error.HTTPError) -> dict:
+    """The parsed error body, read at most once.
+
+    ``HTTPError.read()`` drains the underlying stream: a second call returns
+    ``b""``. Since three helpers want the body, it is cached on the exception
+    so whichever runs first does not starve the others.
+    """
+    cached = getattr(exc, "_goldbot_body", None)
+    if cached is not None:
+        return cached
     try:
         payload = json.loads(exc.read())
-        err = payload.get("error") or {}
-        code = err.get("code") or ""
-        if code == "rate_limit_exceeded":
-            return "rate_limit"
-        return str(code or f"HTTP {exc.code}")
+        payload = payload if isinstance(payload, dict) else {}
     except Exception:
-        return f"HTTP {exc.code}"
+        payload = {}
+    try:
+        exc._goldbot_body = payload
+    except Exception:
+        pass
+    return payload
+
+
+def _http_reason(exc: urllib.error.HTTPError) -> tuple[str, str]:
+    """Groq's own error code and a readable reason, from the response body.
+
+    Returns ``(detail, code)``. The code is what the caller branches on; the
+    detail is what a human reads. Dropping the body is what made a spent daily
+    quota surface as a bare ``RuntimeError`` with no way to tell it from a
+    network blip.
+    """
+    err = _error_payload(exc).get("error") or {}
+    code = str(err.get("code") or "")
+    message = str(err.get("message") or "")
+    if code == "rate_limit_exceeded":
+        return _short_rate_message(message), code
+    return (message or f"HTTP {exc.code}"), code or f"HTTP {exc.code}"
+
+
+def _short_rate_message(message: str) -> str:
+    """Condense Groq's rate-limit prose to the limit and the wait.
+
+    The raw message is several hundred characters of billing upsell; what a
+    reader needs is which ceiling was hit and when it lifts.
+    """
+    low = message.lower()
+    kind = "الحصة اليومية" if "per day" in low else ("حد الدقيقة" if "per minute" in low else "الحد")
+    wait = ""
+    match = re.search(r"try again in ([0-9.]+[a-z]+(?:[0-9.]+[a-z]+)?)", low)
+    if match:
+        wait = f"، يعود بعد {match.group(1)}"
+    return f"{kind}{wait}"
+
+
+def _is_daily(exc: urllib.error.HTTPError) -> bool:
+    """Whether a 429 named a per-day ceiling rather than a per-minute one."""
+    message = str((_error_payload(exc).get("error") or {}).get("message", "")).lower()
+    return "per day" in message or "tpd" in message
+
+
+def _parse_retry_seconds(exc: urllib.error.HTTPError) -> float:
+    """The wait Groq named in 'try again in 20m0.96s', in seconds (0 if absent)."""
+    message = str((_error_payload(exc).get("error") or {}).get("message", ""))
+    match = re.search(r"try again in ([0-9]+)m([0-9.]+)s", message)
+    if match:
+        return int(match.group(1)) * 60 + float(match.group(2))
+    match = re.search(r"try again in ([0-9.]+)s", message)
+    if match:
+        return float(match.group(1))
+    return 0.0
 
 
 def _parse_json(text: str) -> Optional[dict]:

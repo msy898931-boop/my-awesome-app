@@ -251,8 +251,16 @@ class Bot:
     # ── one cycle ────────────────────────────────────────────────────────
 
     def tick(self, with_ai: bool = True) -> Optional[Result]:
-        """Run one analysis and push a card if the idea is new. Returns the result."""
-        result = self.pipeline.run(with_ai=with_ai)
+        """Run one analysis and push a card if the idea is new. Returns the result.
+
+        The AI is asked *last*, and only when a card is actually about to be
+        sent. The plan itself is deterministic, so the key that decides whether
+        anything changed can be computed without a model call. Asking the model
+        every cycle regardless — as this used to — spends a day's token budget in
+        under two hours on prose that is discarded on all but a handful of
+        cycles, and the bot then looks broken for the rest of the day.
+        """
+        result = self.pipeline.run(with_ai=False)
         key = self.plan_key(result)
 
         if not self._primed:
@@ -265,6 +273,11 @@ class Bot:
         if key != self._last_key:
             self._last_key = key
             self._save()
+            if with_ai:
+                # A new idea is worth one model call. The read the key came from
+                # is enriched in place, so the prose can never disagree with the
+                # numbers the send decision was made on.
+                result = self.pipeline.analyse(result)
             text = format_plan(result.plan, result.analysis, result.news)
             try:
                 ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())

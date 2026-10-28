@@ -73,6 +73,22 @@ class Pipeline:
         self._cache[key] = (time.time(), result)
         return result
 
+    def analyse(self, result: Result) -> Result:
+        """Attach the AI read to an already-computed result, reusing its facts.
+
+        The decision to send a card is made on the deterministic plan, so the
+        model is only asked once that decision is yes. Reading the market again
+        for the prose would both waste a round-trip and risk the card's numbers
+        disagreeing with the numbers the decision was made on, so the existing
+        read is enriched in place instead.
+        """
+        if result.analysis or not result.facts:
+            return result
+        analysis = self.analyst.analyse(result.facts, result.news or None,
+                                        self.settings.min_rr)
+        result.analysis = analysis.as_dict()
+        return result
+
     def _read(self, with_ai: bool, with_news: bool) -> Result:
         now = int(time.time())
         result = Result(generated_at=now, symbol=self.settings.symbol)
