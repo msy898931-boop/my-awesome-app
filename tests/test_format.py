@@ -84,8 +84,36 @@ def test_the_market_state_is_rendered_when_present():
     assert "السوق في انحياز صاعد" in card
 
 
-def test_a_blackout_is_flagged_on_the_plan_card():
+def test_a_blackout_withholds_the_idea_on_the_plan_card():
+    """A blackout must not leak the numbers it exists to suppress."""
     card = format_plan(_plan(), news={"blackout": {"active": True}})
+    assert "4050" not in card  # entry
+    assert "4044" not in card  # stop
+    assert "4068" not in card  # target
+    assert "نافذة خبر" in card
+    assert "محجوب" in card
+
+
+def test_a_blackout_also_hides_the_ai_confidence():
+    card = format_plan(_plan(), analysis={"confidence": 0.71}, news={"blackout": {"active": True}})
+    assert "71%" not in card
+    assert "ثقة التقدير" not in card
+
+
+def test_without_a_blackout_the_plan_card_still_shows_every_number():
+    card = format_plan(_plan(), news={"blackout": {"active": False}})
+    assert "4050" in card and "4044" in card and "4068" in card
+
+
+def test_a_withheld_idea_is_not_rendered_as_a_flat_market():
+    """The no-trade card must say *why* it is empty when the cause is a blackout."""
+    card = format_plan(_plan(), news={"blackout": {"active": True}})
+    assert "يوجد نموذج لكنه محجوب" in card
+
+
+def test_the_no_trade_card_does_not_claim_a_withheld_model_when_there_is_none():
+    card = format_plan({"direction": "none"}, news={"blackout": {"active": True}})
+    assert "محجوب" not in card
     assert "نافذة خبر عالي التأثير" in card
 
 

@@ -1,0 +1,20 @@
+# Keeps the pinned actions and the dev tooling current, and surfaces a CVE in a
+# dependency as a PR instead of a surprise. The repo is public, so Dependabot is
+# free; the alternative is noticing a vulnerable pin only when pip-audit reddens
+# CI with no upgrade path prepared.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the routine bumps instead of five that each redden CI.
+      dev-tools:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

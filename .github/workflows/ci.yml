@@ -46,6 +46,17 @@ jobs:
       - name: Type check (mypy)
         run: python -m mypy src/goldbot
 
+      - name: Security lint (bandit)
+        # Static analysis for the code paths that touch the network, spawn
+        # threads, and parse untrusted feeds. A finding here is a real one:
+        # every suppression in the source carries a written reason.
+        run: python -m bandit -c pyproject.toml -r src/goldbot
+
+      - name: Dependency audit (pip-audit)
+        # The runtime has no third-party dependencies, which is the point — but
+        # a dependency added later must not arrive with a known CVE unnoticed.
+        run: python -m pip_audit
+
       - name: Test (pytest)
         run: python -m coverage run -m pytest tests -q
 

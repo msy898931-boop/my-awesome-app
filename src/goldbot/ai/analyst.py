@@ -24,6 +24,7 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 
 from ..config import Settings
+from ..net import open_url
 from .prompt import SYSTEM_PROMPT, build_prompt
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -192,7 +193,7 @@ class Analyst:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with open_url(req, timeout=TIMEOUT) as resp:
             payload = json.loads(resp.read())
         choices = payload.get("choices") or []
         if not choices:

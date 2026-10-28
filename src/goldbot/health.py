@@ -19,9 +19,10 @@ from __future__ import annotations
 import json
 import threading
 import time
-import urllib.request
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from .net import open_url
 
 
 def start_health_server(port: int, status: Callable[[], dict]) -> ThreadingHTTPServer:
@@ -44,7 +45,11 @@ def start_health_server(port: int, status: Callable[[], dict]) -> ThreadingHTTPS
             # The platform already logs requests; a line per poll is noise.
             pass
 
-    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    # Binding all interfaces is the point: the host routes external traffic to
+    # this container port, so loopback would make the service unreachable and the
+    # health check would fail by design. The payload is non-sensitive (uptime,
+    # cycle count, poll interval, whether AI is on).
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)  # nosec B104
     threading.Thread(target=server.serve_forever, daemon=True, name="health").start()
     return server
 
@@ -65,7 +70,7 @@ def ping_once(url: str) -> bool:
     if not url.strip():
         return False
     try:
-        urllib.request.urlopen(target, timeout=30).read()
+        open_url(target, timeout=30).read()
         return True
     except Exception:
         return False

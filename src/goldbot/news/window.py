@@ -4,6 +4,16 @@ A blackout is a stated rule, not a prediction: no *new* idea is offered in the
 minutes around a high-impact release, because spread widens and the first move
 is often a fake. Existing ideas are not cancelled — they are flagged, because a
 stop already placed does not care about the calendar.
+
+Where the rule is enforced: the flag is computed here and read by the one
+predicate ``telegram.format.blackout_blocks_idea``, which *both* the automatic
+push and the card a trader asks for consult. The suppression therefore lives at
+the presentation boundary rather than in ``build_plan``, for two reasons: the
+backtest builds plans with no calendar at all, so gating construction would make
+a historical study calendar-aware in a way it cannot support; and the raw JSON
+(``goldbot analyse --json``) is deliberately the analyst's unfiltered read, not a
+card a trader acts on. What a trader sees is the card, and the card honours the
+rule.
 """
 
 from __future__ import annotations

@@ -26,8 +26,10 @@ it. Everything it sends is a reading, not an instruction.
   requires a minimum reward-to-risk ratio (default 2.0).
 - **Reads the news**: the economic calendar (high-impact events, blackout
   windows) and gold-relevant RSS headlines. A high-impact blackout withholds a
-  new idea — the price card still goes out, with the window flagged, and the
-  idea follows once the window closes.
+  new idea on **every** path — the price card still goes out with the window
+  flagged and the idea follows once the window closes, and the card a trader
+  asks for shows the read without the entry/stop/target, saying plainly that a
+  setup is withheld rather than pretending the market is flat.
 - **Asks an AI for the narrative.** With a Groq key the bot adds a written
   read on top of the deterministic facts; without a key it still produces the
   full SMC/ICT plan, just without commentary.
@@ -138,9 +140,9 @@ a run is deterministic and a failure means the logic broke, not that a feed was
 down.
 
 ```bash
-make check                     # ruff + format + mypy + pytest (what CI runs)
+make check                     # ruff + format + mypy + bandit + pip-audit + pytest
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 465 tests
+python -m pytest tests/ -q     # 480 tests
 ```
 
 CI runs the suite under `coverage` and **fails below a floor of 94%** of
@@ -220,7 +222,7 @@ src/goldbot/
   telegram/         client, formatting, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
-tests/              465 tests
+tests/              480 tests
 ```
 
 ---
