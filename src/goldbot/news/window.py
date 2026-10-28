@@ -18,6 +18,18 @@ from .rss import RssFeed
 BEFORE_MINUTES = 15
 AFTER_MINUTES = 15
 
+# One feed per process. The cache and the 429 back-off only work if the same
+# instance is reused; building a fresh feed per call is what turned a single
+# rate-limit into a permanent one, because every call retried from scratch.
+_FEEDS: Optional[tuple[CalendarFeed, RssFeed]] = None
+
+
+def _feeds() -> tuple[CalendarFeed, RssFeed]:
+    global _FEEDS
+    if _FEEDS is None:
+        _FEEDS = (CalendarFeed(), RssFeed())
+    return _FEEDS
+
 
 def blackout(
     events: list[Event], now: Optional[float] = None,
@@ -51,13 +63,13 @@ def blackout(
 def digest(now: Optional[float] = None) -> dict:
     """Assemble the full news picture: schedule, tape and blackout.
 
-    Read-only and keyless. Every fetch failure degrades to an empty list and
-    the digest remains a valid document — the caller can always tell "no news"
-    from "no feed" by the counts.
+    Read-only and keyless. Every fetch failure degrades to an empty list, but it
+    is *reported* in ``source`` so a rate-limited calendar cannot masquerade as a
+    quiet one — the caller can always tell "no news" from "no feed" by the flags
+    and the counts.
     """
     now = now if now is not None else time.time()
-    calendar = CalendarFeed()
-    rss = RssFeed()
+    calendar, rss = _feeds()
 
     high = calendar.high_impact()
     upcoming = sorted(
@@ -68,9 +80,19 @@ def digest(now: Optional[float] = None) -> dict:
         key=lambda e: e.time, reverse=True,
     )[:5]
 
+    window = blackout(high, now)
+    if not calendar.ok:
+        # Every card reads ``reason``, so the honesty has to live here rather
+        # than in each formatter. An unchecked calendar is not a quiet one.
+        suffix = " (بيانات قديمة)" if calendar.stale else ""
+        window = {**window, "active": False, "checked": False,
+                  "reason": f"تعذّر فحص التقويم: {calendar.error or 'غير متاح'}{suffix}"}
+    else:
+        window = {**window, "checked": True}
+
     return {
         "generated_at": int(now),
-        "blackout": blackout(high, now),
+        "blackout": window,
         "upcoming": [
             {"title": e.title, "country": e.country, "impact": e.impact,
              "time": e.time, "in_minutes": round((e.time - now) / 60.0, 1),
@@ -79,6 +101,11 @@ def digest(now: Optional[float] = None) -> dict:
         ],
         "released": [e.gold_read() for e in released],
         "headlines": [h.as_dict() for h in rss.relevant(6)],
+        "source": {
+            "calendar_ok": calendar.ok,
+            "calendar_error": calendar.error,
+            "calendar_stale": calendar.stale,
+        },
         "counts": {
             "high_impact_this_week": len(high),
             "upcoming": len(upcoming),

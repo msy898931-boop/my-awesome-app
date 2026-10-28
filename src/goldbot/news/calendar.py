@@ -19,6 +19,12 @@ from typing import Optional
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 USER_AGENT = "gold-smc-ict-bot/0.1"
 
+# Back-off after a failed fetch. A source that answered "too many requests"
+# should not be hit again immediately; this is what keeps a 429 from becoming
+# permanent. ``RETRY_AFTER_DEFAULT`` covers a 429 that omits the header.
+NEGATIVE_TTL = 300.0
+RETRY_AFTER_DEFAULT = 120.0
+
 # Which way a higher print leans for the dollar, per indicator. Jobless claims
 # invert it: more claims is a weaker labour market, hence a weaker dollar.
 HIGHER_IS_STRONGER = {
@@ -130,34 +136,90 @@ def _to_epoch(raw) -> Optional[int]:
 
 
 class CalendarFeed:
-    """Fetches the week's calendar, best-effort. A dead feed yields no events."""
+    """Fetches the week's calendar, best-effort.
+
+    "Best-effort" must not mean "silently empty". A dead feed yields no events,
+    but the caller has to be able to tell that apart from a genuinely quiet week
+    — otherwise a rate-limited fetch reads as "no news today", which is how a
+    scheduled FOMC release went missing while the card called the window calm.
+    ``ok`` and ``error`` therefore report the last attempt, and a failure keeps
+    the previous good read (marked ``stale``) instead of dropping the calendar.
+    """
 
     def __init__(self, url: str = FEED_URL, timeout: float = 15.0) -> None:
         self.url = url
         self.timeout = timeout
         self._cache: tuple[float, list[Event]] = (0.0, [])
+        self._ok = False
+        self._error = ""
+        self._retry_at = 0.0
+
+    @property
+    def ok(self) -> bool:
+        """Whether the most recent fetch reached the source."""
+        return self._ok
+
+    @property
+    def error(self) -> str:
+        """Why the last fetch failed, or an empty string when it did not."""
+        return self._error
+
+    @property
+    def stale(self) -> bool:
+        """Serving an older read because the newest attempt failed."""
+        return not self._ok and bool(self._cache[1])
 
     def events(self, ttl: float = 900.0) -> list[Event]:
         now = time.time()
         if now - self._cache[0] < ttl and self._cache[1]:
             return self._cache[1]
-        rows = self._fetch()
-        events = [e for e in (_parse(row) for row in rows) if e is not None]
-        self._cache = (now, events)
-        return events
+        rows, error = self._fetch()
+        if error:
+            self._ok = False
+            self._error = error
+            # Back off before trying again. Hammering a source that just said
+            # "too many requests" is what keeps it saying that.
+            self._retry_at = max(self._retry_at, now + NEGATIVE_TTL)
+            return self._cache[1]
+        self._cache = (now, [e for e in (_parse(r) for r in rows) if e is not None])
+        self._ok = True
+        self._error = ""
+        return self._cache[1]
 
-    def _fetch(self) -> list[dict]:
+    def _fetch(self) -> tuple[list[dict], str]:
+        """One attempt. Returns the rows and an error string ('' on success)."""
+        if time.time() < self._retry_at:
+            return [], f"backing off ({int(self._retry_at - time.time())}s)"
         req = urllib.request.Request(self.url, headers={"User-Agent": USER_AGENT})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 if resp.status != 200:
-                    return []
-                return json.loads(resp.read())
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-            return []
+                    return [], f"HTTP {resp.status}"
+                data = json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            # HTTPError subclasses URLError, so it must be caught first. A 429
+            # carries Retry-After, and ignoring it is how the feed stays closed.
+            wait = _retry_after(exc.headers) or (RETRY_AFTER_DEFAULT if exc.code == 429 else 0.0)
+            if wait:
+                self._retry_at = time.time() + wait
+            return [], f"HTTP {exc.code}"
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            return [], type(exc).__name__
+        if not isinstance(data, list):
+            return [], "unexpected payload"
+        return data, ""
 
     def high_impact(self) -> list[Event]:
         return [e for e in self.events() if e.impact.lower() in HIGH_IMPACT]
+
+
+def _retry_after(headers) -> float:
+    """Seconds to wait, from a ``Retry-After`` header. 0 when absent or bad."""
+    raw = (headers or {}).get("Retry-After", "")
+    try:
+        return max(0.0, min(float(raw), 3600.0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _parse(row: dict) -> Optional[Event]:

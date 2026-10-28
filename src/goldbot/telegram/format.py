@@ -112,19 +112,55 @@ def format_analysis(sheet: dict, news: Optional[dict] = None) -> str:
     return "\n".join(lines)
 
 
+def _when(minutes) -> str:
+    """Minutes until an event, as a trader would say it."""
+    try:
+        m = int(round(float(minutes)))
+    except (TypeError, ValueError):
+        return "—"
+    if m < 0:
+        return "الآن"
+    if m < 90:
+        return f"{m} د"
+    return f"{m // 60}س {m % 60}د"
+
+
+def _num(value) -> str:
+    """A number as written, or an em dash. ``None`` must never reach the card."""
+    if value is None or value == "":
+        return "—"
+    return _esc(str(value))
+
+
 def format_news(news: dict) -> str:
     """The `/أخبار` card."""
     lines = ["📰 *الأخبار والاقتصاد*", ""]
+    source = news.get("source") or {}
+    calendar_ok = source.get("calendar_ok", True)
+    stale = source.get("calendar_stale", False)
     blackout = news.get("blackout") or {}
-    lines.append(f"*النافذة:* {'🚨 نشطة' if blackout.get('active') else 'هادئة'}")
+
+    # Never call the window calm on a failed read. "No events" and "no feed"
+    # look identical in the data, and only the card can tell them apart.
+    if not calendar_ok:
+        reason = _esc(str(source.get("calendar_error") or "مصدر التقويم غير متاح"))
+        age = " (بيانات قديمة)" if stale else ""
+        lines.append(f"*النافذة:* ⚠️ تعذّر الفحص{age}")
+        lines.append(f"_التقويم لم يستجب: {reason} — لا يمكن الجزم بوجود خبر_")
+    else:
+        lines.append(f"*النافذة:* {'🚨 نشطة' if blackout.get('active') else 'هادئة'}")
+
     upcoming = news.get("upcoming") or []
     if upcoming:
         lines += ["", "*القادم:*"]
         for e in upcoming[:5]:
             lines.append(
                 f"• {_esc(str(e.get('title')))} [{_esc(str(e.get('country')))}] "
-                f"بعد {e.get('in_minutes')}د (توقع {e.get('forecast')})"
+                f"بعد {_when(e.get('in_minutes'))} (توقع {_num(e.get('forecast'))})"
             )
+    elif calendar_ok:
+        lines += ["", "_لا يوجد حدث عالي التأثير في الأفق._"]
+
     released = news.get("released") or []
     if released:
         lines += ["", "*صدر مؤخراً:*"]
