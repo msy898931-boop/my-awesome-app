@@ -96,6 +96,7 @@ class Bot:
             self._save()
             text = format_plan(result.plan, result.analysis, result.news)
             self.tg.send(self.chat_id, text)
+            self._log(f"أُرسلت فكرة — {(result.plan or {}).get('direction', '?')}")
         return result
 
     # ── commands ─────────────────────────────────────────────────────────
@@ -148,14 +149,56 @@ class Bot:
 
     def run_forever(self) -> None:
         """Poll commands, then the market, then sleep. Runs until interrupted."""
+        self._start_health()
+        self._log(f"البوت يعمل — كل {self.settings.poll_seconds} ثانية")
+        cycle = 0
         while True:
+            cycle += 1
             try:
                 self.handle_updates()
-            except TelegramError:
-                pass
+            except TelegramError as exc:
+                self._log(f"تحديثات: فشل ({exc})")
             try:
                 self.tick()
-            except Exception:
+                self._cycles = cycle
+                if cycle % 20 == 0:
+                    self._log(f"دورة {cycle}: لا جديد")
+            except Exception as exc:
                 # A bad cycle must not kill the loop; the next one may be fine.
-                pass
+                self._log(f"دورة {cycle}: خطأ ({type(exc).__name__}: {exc})")
             time.sleep(self.settings.poll_seconds)
+
+    def _start_health(self) -> None:
+        """Open the health port when the host provides one (Render, Fly, Heroku).
+
+        Locally there is no ``PORT``, so nothing is opened and the loop behaves
+        exactly as it does without this module.
+        """
+        raw = os.environ.get("PORT", "").strip()
+        if not raw:
+            return
+        try:
+            port = int(raw)
+        except ValueError:
+            self._log(f"PORT غير صالح ({raw!r}) — بدون منفذ صحة")
+            return
+        from ..health import start_health_server
+
+        self._started_at = time.time()
+        self._cycles = 0
+        start_health_server(port, self.health_status)
+        self._log(f"منفذ الصحة يعمل على {port}")
+
+    def health_status(self) -> dict:
+        return {
+            "status": "ok",
+            "bot": "@Xauusd1435_bot",
+            "uptime_seconds": round(time.time() - getattr(self, "_started_at", time.time())),
+            "cycles": getattr(self, "_cycles", 0),
+            "poll_seconds": self.settings.poll_seconds,
+            "ai_enabled": self.settings.ai_enabled,
+        }
+
+    def _log(self, message: str) -> None:
+        stamp = time.strftime("%H:%M:%S")
+        print(f"[{stamp}] {message}", flush=True)

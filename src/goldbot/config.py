@@ -13,6 +13,31 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def load_dotenv(path: Path | None = None) -> None:
+    """Load a ``.env`` file into ``os.environ``, without overriding real vars.
+
+    The package has no third-party dependency, so this is a minimal parser:
+    ``KEY=value`` per line, ``#`` comments and blank lines skipped, optional
+    surrounding quotes stripped. Real environment variables always win, so a
+    shell-exported secret is never clobbered by a stale file.
+    """
+    if path is None:
+        path = Path(__file__).resolve().parents[2] / ".env"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def _flag(name: str, default: bool = True) -> bool:
     raw = os.environ.get(name)
     if raw is None:
@@ -105,4 +130,5 @@ class Settings:
 
 def load_settings() -> Settings:
     """Read the environment once and return settings. Callers may inject their own."""
+    load_dotenv()
     return Settings()

@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: goldbot
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -e .
+    startCommand: python -m goldbot.cli bot
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: GOLDBOT_ENABLE_YAHOO
+        value: "0"
+      - key: GOLDBOT_ENABLE_BINANCE
+        value: "1"
+      # Secrets are set in the Render dashboard, never in this file:
+      #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GROQ_API_KEY
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
