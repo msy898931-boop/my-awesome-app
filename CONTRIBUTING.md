@@ -34,6 +34,10 @@ A change is ready when `make check` is green. The suite is offline by design —
 logic broke, not that a feed was down. If a test needs the network, it needs a
 stub instead.
 
+The gate covers `starter/` as well as `src/` and `tests/`: the extracted
+[starter kit](starter/README.md) is shipped code, so its tests run, its types
+are checked, and it counts toward the same coverage floor.
+
 ## Style
 
 - Code and comments in English; user-facing strings in Arabic.

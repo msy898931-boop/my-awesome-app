@@ -30,15 +30,17 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
+# The starter kit lives beside the project it was extracted from and is run
+# by the same gate, so the patterns cannot rot away from their tests.
+testpaths = ["tests", "starter/tests"]
+pythonpath = ["src", "starter"]
 addopts = "-q"
 
 [tool.coverage.run]
 # ``source`` (not a path glob) is what makes coverage fail a module the suite
 # never imports: a file that is never loaded is counted as 0% rather than being
 # invisible to the report.
-source = ["goldbot"]
+source = ["goldbot", "goldkit"]
 branch = false
 
 [tool.coverage.report]
@@ -52,7 +54,7 @@ skip_covered = false
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-src = ["src", "tests"]
+src = ["src", "tests", "starter"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -68,4 +70,4 @@ warn_unused_ignores = true
 # scripts are one-off, so a finding there is noise rather than signal. Any
 # suppression in the source carries a ``# nosec BXXX`` with the reason above it,
 # so a reviewer can weigh it instead of taking it on faith.
-exclude_dirs = ["tests", "research"]
+exclude_dirs = ["tests", "research", "starter/tests"]
