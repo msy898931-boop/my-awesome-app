@@ -392,6 +392,45 @@ def test_handle_updates_forwards_the_long_poll_timeout():
     assert seen == [25]
 
 
+def test_get_updates_always_names_allowed_updates(monkeypatch):
+    """A stored ``["message"]`` filter drops every inline button silently.
+
+    Telegram keeps the last ``allowed_updates`` it was given and applies it to
+    later calls that omit it. The frames and sensitivity buttons are
+    ``callback_query`` updates, so an inherited ``["message"]`` filter made them
+    do nothing at all while the reply panel kept working.
+    """
+    import urllib.request
+
+    from goldbot.telegram.client import ALLOWED_UPDATES, Telegram
+
+    seen: dict = {}
+
+    class _Resp:
+        def read(self):
+            return b'{"ok": true, "result": []}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        import json
+
+        seen["payload"] = json.loads(req.data.decode())
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    Telegram("123:abc").updates(None, timeout=0)
+
+    sent = seen["payload"]["allowed_updates"]
+    assert "callback_query" in sent, sent
+    assert "message" in sent, sent
+    assert set(sent) == set(ALLOWED_UPDATES)
+
+
 # ── persistent bottom panel ─────────────────────────────────────────────
 
 

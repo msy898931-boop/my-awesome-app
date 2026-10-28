@@ -16,6 +16,15 @@ import urllib.request
 API = "https://api.telegram.org/bot{token}/{method}"
 TIMEOUT = 20.0
 
+# Telegram stores whatever ``allowed_updates`` it was last given, and applies it
+# to every later ``getUpdates`` that omits the field. A previous tool (or an
+# older deployment) left it at ``["message"]``, so ``callback_query`` was
+# dropped server-side and every inline button — frames, sensitivity — silently
+# did nothing, while the reply-keyboard panel kept working because it sends
+# plain messages. Naming the full set on every poll makes the filter explicit
+# and immune to whatever was stored before.
+ALLOWED_UPDATES: tuple[str, ...] = ("message", "callback_query", "edited_message")
+
 
 class TelegramError(RuntimeError):
     """The Bot API refused the call. Carries the description."""
@@ -129,11 +138,17 @@ class Telegram:
     def updates(self, offset: int | None = None, timeout: int = 0) -> list[dict]:
         """Fetch pending updates. A positive ``timeout`` long-polls server-side.
 
+        ``allowed_updates`` is always sent explicitly. Telegram remembers the
+        last value it was given, and a stale ``["message"]`` silently drops
+        every ``callback_query`` — which is why inline buttons (frames,
+        sensitivity) looked dead while the reply panel kept working: the panel
+        sends text messages, the inline buttons send callbacks.
+
         The HTTP timeout is raised above the long-poll window, otherwise the
         socket closes before Telegram has a chance to answer and every poll
         looks like a network failure.
         """
-        payload: dict = {"timeout": timeout}
+        payload: dict = {"timeout": timeout, "allowed_updates": list(ALLOWED_UPDATES)}
         if offset is not None:
             payload["offset"] = offset
         http_timeout = max(self.timeout, timeout + 10)
