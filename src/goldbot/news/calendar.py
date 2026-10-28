@@ -70,7 +70,9 @@ class Event:
         gold, so the sign flips. Non-US events are labelled indirect and carry
         no directional claim.
         """
-        out = {"title": self.title, "country": self.country, "impact": self.impact}
+        out = {"title": self.title, "country": self.country, "impact": self.impact,
+               "actual": self.actual, "forecast": self.forecast,
+               "previous": self.previous}
         if self.actual is None:
             out.update({"read": "pending", "baseline": None, "note": "لم يصدر بعد"})
             return out

@@ -12,6 +12,12 @@ from typing import Optional
 
 ADVISORY = "⚠️ _تحليل استشاري فقط — ليس نصيحة مالية، والبوت لا ينفّذ أي صفقة._"
 
+# Stated on every news card so the mechanical lean is never mistaken for a
+# measured edge. It has not been backtested; saying so is cheaper than a
+# trader assuming otherwise.
+NEWS_METHOD = ("_قراءة ميكانيكية: الفعلي مقابل التقدير، والأثر على الذهب مباشر "
+               "مع الدولار فقط. أثر الأخبار على نتائج النظام ما انقاس بعد — لا يُدَّعى حافة._")
+
 BIAS_AR = {"bullish": "صاعد 📈", "bearish": "هابط 📉", "neutral": "محايد ↔️"}
 DIR_AR = {"buy": "شراء 🟢", "sell": "بيع 🔴", "none": "لا صفقة ⚪"}
 
@@ -147,28 +153,58 @@ def format_analysis(sheet: dict, news: Optional[dict] = None) -> str:
 
 
 def _when(minutes) -> str:
-    """Minutes until an event, as a trader would say it."""
+    """Minutes until (or since) an event, as whole minutes.
+
+    Whole minutes, never ``51.0`` — the float used to leak straight into the
+    card. Far-off events stay in minutes rather than rolling up into hours so
+    the column reads consistently down the list.
+    """
     try:
         m = int(round(float(minutes)))
     except (TypeError, ValueError):
         return "—"
-    if m < 0:
-        return "الآن"
-    if m < 90:
-        return f"{m} د"
-    return f"{m // 60}س {m % 60}د"
+    return "الآن" if m < 0 else f"{m} د"
 
 
 def _num(value) -> str:
     """A number as written, or an em dash. ``None`` must never reach the card."""
     if value is None or value == "":
         return "—"
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
     return _esc(str(value))
 
 
+def _gold_lean(event: dict) -> str:
+    """The one-line mechanical read, with the comparison spelled out.
+
+    The lean itself is computed in the news layer (``gold_read``); this only
+    renders it, so the card and the logic cannot drift apart. A release with no
+    baseline gets its honest note, never an invented arrow.
+    """
+    read = event.get("read")
+    if read == "inline":
+        return "الفعلي مطابق للتقدير → لا إشارة"
+    if read == "direct":
+        actual, forecast, previous = (event.get("actual"), event.get("forecast"),
+                                      event.get("previous"))
+        baseline = forecast if event.get("baseline") == "forecast" else previous
+        direction = "أعلى" if (actual or 0) > (baseline or 0) else "أدنى"
+        # A stronger dollar pressures gold, so "دعم للذهب" implies a weaker one.
+        usd = "أقوى" if "ضغط" in str(event.get("gold", "")) else "أضعف"
+        return f"الفعلي {direction} → USD {usd} → {_esc(str(event.get('gold')))}"
+    note = event.get("note") or "لا قراءة"
+    return _esc(str(note))
+
+
 def format_news(news: dict) -> str:
-    """The `/أخبار` card."""
-    lines = ["📰 *الأخبار والاقتصاد*", ""]
+    """The `/أخبار` card: the window, what is coming, what printed, and the tape.
+
+    Every line is derived from the feed, never asserted. Where a release has no
+    baseline there is no arrow, and where the calendar could not be read the
+    card says so instead of showing an empty, reassuring schedule.
+    """
+    lines = ["📰 *الأخبار والذهب — الآن*", ""]
     source = news.get("source") or {}
     calendar_ok = source.get("calendar_ok", True)
     stale = source.get("calendar_stale", False)
@@ -179,31 +215,44 @@ def format_news(news: dict) -> str:
     if not calendar_ok:
         reason = _esc(str(source.get("calendar_error") or "مصدر التقويم غير متاح"))
         age = " (بيانات قديمة)" if stale else ""
-        lines.append(f"*النافذة:* ⚠️ تعذّر الفحص{age}")
-        lines.append(f"_التقويم لم يستجب: {reason} — لا يمكن الجزم بوجود خبر_")
+        lines.append(f"⚠️ *تعذّر فحص التقويم*{age}")
+        lines.append(f"_المصدر لم يستجب: {reason} — لا يمكن الجزم بوجود خبر_")
+    elif blackout.get("active"):
+        lines.append("🚨 *نافذة خبر عالي التأثير الآن*")
+        for e in (blackout.get("imminent") or [])[:3]:
+            lines.append(f"  • {_esc(str(e.get('title')))} "
+                         f"[{_esc(str(e.get('country')))}] {_when(e.get('minutes'))}")
     else:
-        lines.append(f"*النافذة:* {'🚨 نشطة' if blackout.get('active') else 'هادئة'}")
+        lines.append("✅ *السوق خالٍ من الأخبار المهمة*")
 
     upcoming = news.get("upcoming") or []
     if upcoming:
-        lines += ["", "*القادم:*"]
+        lines += ["", "⏳ *أحداث قادمة عالية التأثير:*"]
         for e in upcoming[:5]:
             lines.append(
-                f"• {_esc(str(e.get('title')))} [{_esc(str(e.get('country')))}] "
-                f"بعد {_when(e.get('in_minutes'))} (توقع {_num(e.get('forecast'))})"
+                f"  • {_esc(str(e.get('title')))} [{_esc(str(e.get('country')))}] "
+                f"بعد {_when(e.get('in_minutes'))}"
             )
     elif calendar_ok:
         lines += ["", "_لا يوجد حدث عالي التأثير في الأفق._"]
 
     released = news.get("released") or []
     if released:
-        lines += ["", "*صدر مؤخراً:*"]
-        for e in released[:3]:
-            lines.append(f"• {_esc(str(e.get('title')))}: {_esc(str(e.get('gold') or e.get('read')))}")
+        lines += ["", "💱 *صدر للتو:*"]
+        for e in released[:5]:
+            lines.append(f"  • {_esc(str(e.get('title')))} [{_esc(str(e.get('country')))}] "
+                         f"قبل {_when(abs(e.get('in_minutes') or 0))}")
+            lines.append(f"    الفعلي {_num(e.get('actual'))} · التقدير {_num(e.get('forecast'))}"
+                         f" · السابق {_num(e.get('previous'))}")
+            lines.append(f"    {_gold_lean(e)}")
+
     headlines = news.get("headlines") or []
     if headlines:
-        lines += ["", "*العناوين:*"]
-        for h in headlines[:4]:
-            lines.append(f"• {_esc(str(h.get('title')))}")
-    lines += ["", ADVISORY]
+        lines += ["", "🗞 *عناوين الذهب:*"]
+        for h in headlines[:5]:
+            src = _esc(str(h.get("source") or ""))
+            suffix = f" — {src}" if src else ""
+            lines.append(f"  • {_esc(str(h.get('title')))}{suffix}")
+
+    lines += ["", NEWS_METHOD, "", ADVISORY]
     return "\n".join(lines)

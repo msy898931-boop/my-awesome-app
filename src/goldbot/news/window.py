@@ -99,7 +99,10 @@ def digest(now: Optional[float] = None) -> dict:
              "forecast": e.forecast, "previous": e.previous}
             for e in upcoming
         ],
-        "released": [e.gold_read() for e in released],
+        "released": [
+            {**e.gold_read(), "in_minutes": round((e.time - now) / 60.0, 1)}
+            for e in released
+        ],
         "headlines": [h.as_dict() for h in rss.relevant(6)],
         "source": {
             "calendar_ok": calendar.ok,

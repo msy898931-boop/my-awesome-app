@@ -121,8 +121,8 @@ def test_a_failed_calendar_does_not_render_as_calm(monkeypatch):
 
     monkeypatch.setattr("goldbot.news.window._feeds", lambda: (_Dead(), _Rss()))
     card = format_news(digest())
-    assert "هادئة" not in card
-    assert "تعذّر الفحص" in card
+    assert "السوق خالٍ" not in card
+    assert "تعذّر فحص التقويم" in card
     assert "HTTP 429" in card
 
 
@@ -137,8 +137,8 @@ def test_a_checked_calendar_can_still_render_as_calm(monkeypatch):
 
     monkeypatch.setattr("goldbot.news.window._feeds", lambda: (_Live(), _Rss()))
     card = format_news(digest())
-    assert "هادئة" in card
-    assert "تعذّر الفحص" not in card
+    assert "السوق خالٍ من الأخبار المهمة" in card
+    assert "تعذّر فحص التقويم" not in card
 
 
 def test_the_card_never_prints_a_bare_none_for_a_missing_forecast(monkeypatch):

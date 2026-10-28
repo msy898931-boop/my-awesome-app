@@ -111,7 +111,7 @@ def test_the_price_card_names_the_next_release_when_calm():
                         {"upcoming": [{"title": "Federal Funds Rate",
                                        "in_minutes": 306.0}]})
     assert "Federal Funds Rate" in card
-    assert "5س 6د" in card
+    assert "بعد 306 د" in card
 
 
 def test_the_price_card_survives_a_missing_quote():
