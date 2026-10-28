@@ -18,7 +18,7 @@ from typing import Optional
 from ..config import Settings
 from ..pipeline import Pipeline, Result
 from .client import Telegram, TelegramError
-from .format import format_analysis, format_news, format_plan
+from .format import format_analysis, format_news, format_plan, format_price
 
 HELP = (
     "🥇 *بوت الذهب — SMC/ICT*\n\n"
@@ -243,22 +243,29 @@ class Bot:
 
     @staticmethod
     def plan_key(result: Result) -> str:
+        """The identity of an *idea*, not of its numbers.
+
+        Direction plus setup. The entry/stop/target deliberately do not appear:
+        they drift by a tick on every read, so including them made a single
+        idea look new on almost every cycle — the bot sent the same "buy" eight
+        times in forty minutes. A trader wants to hear about a new idea, not
+        about the same idea re-priced.
+        """
         plan = result.plan or {}
         if plan.get("direction") not in {"buy", "sell"}:
             return "no-trade"
-        return f"{plan['direction']}:{plan.get('entry')}:{plan.get('stop')}:{plan.get('target')}"
+        return f"{plan['direction']}:{plan.get('setup') or ''}"
 
     # ── one cycle ────────────────────────────────────────────────────────
 
     def tick(self, with_ai: bool = True) -> Optional[Result]:
         """Run one analysis and push a card if the idea is new. Returns the result.
 
-        The AI is asked *last*, and only when a card is actually about to be
-        sent. The plan itself is deterministic, so the key that decides whether
-        anything changed can be computed without a model call. Asking the model
-        every cycle regardless — as this used to — spends a day's token budget in
-        under two hours on prose that is discarded on all but a handful of
-        cycles, and the bot then looks broken for the rest of the day.
+        The automatic push is a *price* card and costs no model tokens: the AI
+        is only asked when a card is actually due, and even then the push stays
+        deterministic. Spending 3400 tokens per cycle on prose that is discarded
+        on all but a handful of cycles is what drained the daily quota in an
+        hour and a half.
         """
         result = self.pipeline.run(with_ai=False)
         key = self.plan_key(result)
@@ -273,12 +280,7 @@ class Bot:
         if key != self._last_key:
             self._last_key = key
             self._save()
-            if with_ai:
-                # A new idea is worth one model call. The read the key came from
-                # is enriched in place, so the prose can never disagree with the
-                # numbers the send decision was made on.
-                result = self.pipeline.analyse(result)
-            text = format_plan(result.plan, result.analysis, result.news)
+            text = format_price(result.spot, result.plan, result.news)
             try:
                 ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
             except TelegramError as exc:

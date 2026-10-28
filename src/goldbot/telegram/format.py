@@ -23,6 +23,40 @@ def _esc(text: str) -> str:
     return text
 
 
+def format_price(spot: Optional[dict], plan: Optional[dict] = None,
+                 news: Optional[dict] = None) -> str:
+    """The automatic push: live price, direction, and the next release.
+
+    Deliberately small, and deliberately free. Everything here is deterministic,
+    so an automatic message costs no model tokens at all — the AI prose is only
+    produced when the trader asks for the full card. The price is the one thing
+    worth pushing unprompted, because it changes on every read while the plan
+    behind it rarely does.
+    """
+    lines = ["🥇 *XAUUSD*"]
+    price = (spot or {}).get("close")
+    if price is not None:
+        lines.append(f"*السعر:* `{price}`")
+    else:
+        lines.append("*السعر:* غير متاح")
+
+    direction = (plan or {}).get("direction", "none")
+    if direction in {"buy", "sell"}:
+        lines.append(f"*الاتجاه:* {DIR_AR.get(direction, direction)}")
+        if plan.get("setup"):
+            lines.append(f"*النموذج:* {_esc(str(plan['setup']))}")
+
+    upcoming = ((news or {}).get("upcoming") or [])
+    if (news or {}).get("blackout", {}).get("active"):
+        lines.append("🚨 *نافذة خبر عالي التأثير الآن*")
+    elif upcoming:
+        nxt = upcoming[0]
+        lines.append(f"📅 {_esc(str(nxt.get('title')))} بعد {_when(nxt.get('in_minutes'))}")
+
+    lines += ["", ADVISORY]
+    return "\n".join(lines)
+
+
 def format_plan(plan: dict, analysis: Optional[dict] = None, news: Optional[dict] = None) -> str:
     """The main card: a plan, its numbers, and the reasoning behind it."""
     direction = plan.get("direction", "none")

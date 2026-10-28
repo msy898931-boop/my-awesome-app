@@ -16,10 +16,14 @@ from dataclasses import dataclass
 
 USER_AGENT = "gold-smc-ict-bot/0.1"
 
+# Labels must name the source that actually answers. Two were wrong: the
+# "Reuters" URL is WSJ's feed, and news_301 is Investing's *crypto* stream —
+# which is the wrong asset entirely for a gold bot, so it was crowding out
+# commodity headlines with bitcoin ones.
 FEEDS = (
-    ("Reuters Markets", "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"),
-    ("Investing News", "https://www.investing.com/rss/news_301.rss"),
+    ("WSJ Markets", "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"),
     ("Investing Commodities", "https://www.investing.com/rss/news_11.rss"),
+    ("Investing Forex", "https://www.investing.com/rss/news_1.rss"),
 )
 
 # Terms that make a headline plausibly gold-relevant.
