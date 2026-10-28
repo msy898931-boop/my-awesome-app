@@ -21,7 +21,13 @@ from dataclasses import replace
 from ..config import Settings
 from ..pipeline import Pipeline, Result
 from .client import Telegram, TelegramError
-from .format import format_analysis, format_news, format_plan, format_price
+from .format import (
+    blackout_blocks_idea,
+    format_analysis,
+    format_news,
+    format_plan,
+    format_price,
+)
 
 log = logging.getLogger("goldbot")
 
@@ -312,7 +318,7 @@ class Bot:
         # release the card still goes out as a price read with the window
         # flagged, but without the direction and setup: the rule is stated, so
         # it is honoured rather than merely printed.
-        in_blackout = bool((result.news or {}).get("blackout", {}).get("active"))
+        in_blackout = blackout_blocks_idea(result.news)
         withheld = in_blackout and key != "no-trade"
 
         if key != self._last_key or (self._pending_key and not in_blackout):

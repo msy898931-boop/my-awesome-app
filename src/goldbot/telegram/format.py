@@ -64,10 +64,28 @@ def format_price(spot: dict | None, plan: dict | None = None, news: dict | None 
     return "\n".join(lines)
 
 
+def blackout_blocks_idea(news: dict | None) -> bool:
+    """Whether the stated rule withholds a *new* idea right now.
+
+    One predicate for both paths — the automatic push and the card a trader asks
+    for — so the rule cannot be honoured on one and bypassed by a button on the
+    other. The blackout is a stated rule, and a stated rule with an exception is
+    not a rule.
+    """
+    return bool((news or {}).get("blackout", {}).get("active"))
+
+
 def format_plan(plan: dict, analysis: dict | None = None, news: dict | None = None) -> str:
-    """The main card: a plan, its numbers, and the reasoning behind it."""
+    """The main card: a plan, its numbers, and the reasoning behind it.
+
+    During a high-impact blackout the card degrades to the no-trade read. The
+    *idea* — direction, entry, stop, target, confidence — is what a blackout
+    exists to suppress, so none of it is shown; the numbers a trader needs to
+    act on are exactly the numbers withheld. ``format_status`` says why, so a
+    missing block is never mistaken for a market verdict.
+    """
     direction = plan.get("direction", "none")
-    if direction == "none":
+    if direction == "none" or blackout_blocks_idea(news):
         return format_status(plan, analysis, news)
 
     lines = [f"🥇 *XAUUSD — {DIR_AR.get(direction, direction)}*", ""]
@@ -94,9 +112,6 @@ def format_plan(plan: dict, analysis: dict | None = None, news: dict | None = No
     if analysis and analysis.get("market_state"):
         lines += ["", "*حالة السوق:*", _esc(analysis["market_state"])]
 
-    if news and (news.get("blackout") or {}).get("active"):
-        lines += ["", "🚨 *نافذة خبر عالي التأثير* — يُفضّل تجنّب الدخول الجديد الآن"]
-
     if plan.get("rejected"):
         lines += ["", "*ما لم يتحقق:*"]
         lines += [f"• {_esc(str(r))}" for r in plan["rejected"][:3]]
@@ -106,8 +121,21 @@ def format_plan(plan: dict, analysis: dict | None = None, news: dict | None = No
 
 
 def format_status(plan: dict, analysis: dict | None = None, news: dict | None = None) -> str:
-    """The no-trade card: why there is nothing to do, plus the market state."""
+    """The no-trade card: why there is nothing to do, plus the market state.
+
+    Two different reasons reach this card and they must not look alike: the
+    market offered no setup, or it offered one that the blackout withholds. The
+    second is said out loud — otherwise a withheld idea reads as a flat market,
+    which is a different claim about the world.
+    """
+    withheld = blackout_blocks_idea(news) and plan.get("direction") in {"buy", "sell"}
     lines = ["🥇 *XAUUSD — لا توجد صفقة الآن*", ""]
+    if withheld:
+        lines += [
+            "🚨 *يوجد نموذج لكنه محجوب* — نافذة خبر عالي التأثير.",
+            "_تُعرض الأرقام بعد انتهاء النافذة._",
+            "",
+        ]
     if analysis and analysis.get("market_state"):
         lines += ["*حالة السوق:*", _esc(analysis["market_state"]), ""]
     if analysis and analysis.get("bias"):
@@ -117,7 +145,7 @@ def format_status(plan: dict, analysis: dict | None = None, news: dict | None = 
         lines += [f"• {_esc(str(r))}" for r in plan["rejected"][:5]]
     if news:
         blackout = news.get("blackout") or {}
-        if blackout.get("active"):
+        if blackout.get("active") and not withheld:
             lines += ["", "🚨 *نافذة خبر عالي التأثير*"]
         upcoming = news.get("upcoming") or []
         if upcoming:

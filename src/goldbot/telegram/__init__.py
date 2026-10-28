@@ -13,6 +13,13 @@ Two deliberate properties, both about not being annoying:
 
 from .bot import Bot
 from .client import Telegram
-from .format import format_analysis, format_plan, format_status
+from .format import blackout_blocks_idea, format_analysis, format_plan, format_status
 
-__all__ = ["Telegram", "format_analysis", "format_plan", "format_status", "Bot"]
+__all__ = [
+    "Telegram",
+    "blackout_blocks_idea",
+    "format_analysis",
+    "format_plan",
+    "format_status",
+    "Bot",
+]

@@ -15,6 +15,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from ..net import open_url
+
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 USER_AGENT = "gold-smc-ict-bot/0.1"
 
@@ -210,7 +212,7 @@ class CalendarFeed:
             return [], f"backing off ({int(self._retry_at - time.time())}s)"
         req = urllib.request.Request(self.url, headers={"User-Agent": USER_AGENT})
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with open_url(req, timeout=self.timeout) as resp:
                 if resp.status != 200:
                     return [], f"HTTP {resp.status}"
                 data = json.loads(resp.read())

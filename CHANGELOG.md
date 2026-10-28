@@ -7,6 +7,25 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Static security analysis and a dependency audit in CI.** `bandit` scans the
+  package and `pip-audit` checks the project's own dependencies against the
+  advisory database; both run on Python 3.10 and 3.12 and fail the build on a
+  finding. `make check` runs them too, so the gate is the same locally and on
+  the runner. The audit is scoped to the project (`.`), not the whole
+  environment — auditing everything flags the runner's `setuptools` and
+  pip-audit's own transitive deps, which this project does not ship.
+- **Dependabot** (`.github/dependabot.yml`): weekly, grouped updates for the
+  Python dev tooling and the pinned actions. The repo is public, so this is free
+  — and a vulnerable pin now arrives as a PR rather than as a red audit with no
+  upgrade path ready.
+- **`net.open_url`, one guarded door for outbound HTTP.** Every `urlopen` call
+  site now goes through it, and it refuses any scheme that is not `http`/`https`
+  *before* urllib is reached. `urlopen` will open `file://` and other schemes,
+  and several URLs are assembled from configuration or a provider's response, so
+  the check belongs in one place rather than repeated (and forgettable) at each
+  call site.
+- Tests for `net.py` (each refused scheme, each allowed one, and a prepared
+  `Request`), and for the blackout policy on the plan card.
 - **A second coverage push, driven by the report rather than by taste.** Every
   module below 85% was taken on: `ai/prompt.py` 50→100%, `ai/analyst.py` 75→98%,
   `telegram/bot.py` 79→85%, `telegram/format.py` 84→100%, `data/yahoo.py`
@@ -54,9 +73,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   longer drift away from the truth unnoticed. Measured on this revision: **95%**
   of `src/goldbot`, with no module below 85%; `format.py`, `prompt.py`,
   `health.py`, `pipeline.py` and the data base are at 100%.
-- The blackout is now **enforced**, not merely printed. A high-impact window
-  withholds the direction and setup from the automatic push; the idea is
-  remembered and sent when the window closes, and survives a restart.
+- The blackout is now **enforced on every path**, not merely printed. A
+  high-impact window withholds the direction and setup from the automatic push;
+  the idea is remembered and sent when the window closes, and survives a restart.
+  The card a trader asks for (`/plan`, and the CLI) is held to the same rule: the
+  blackout withholds the entry, stop, target and the AI's confidence, and the
+  no-trade card says *which* of the two it is — no setup, or a setup withheld —
+  so a suppressed idea is never mistaken for a flat market. Previously the rule
+  was honoured on the push and bypassed by the button, which is not a rule.
 - The test suite is genuinely offline: `conftest` blocks every non-loopback
   socket and zeroes the AI retry back-off. The run went from ~163s to under 2s.
 - Bot state is written atomically (temp file + `os.replace`), so a crash

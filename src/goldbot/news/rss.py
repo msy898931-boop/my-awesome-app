@@ -16,8 +16,10 @@ import re
 import time
 import urllib.error
 import urllib.request
-import xml.etree.ElementTree as ET  # nosec B405 - the DOCTYPE guard below is the defence
+import xml.etree.ElementTree as ET  # nosec B405
 from dataclasses import dataclass
+
+from ..net import open_url
 
 USER_AGENT = "gold-smc-ict-bot/0.1"
 
@@ -181,7 +183,7 @@ class RssFeed:
         """
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with open_url(req, timeout=self.timeout) as resp:
                 if resp.status != 200:
                     return [], f"HTTP {resp.status}"
                 # Read one byte past the cap: if it is there, the body is over.
@@ -198,7 +200,9 @@ class RssFeed:
             # needs one, so refuse rather than risk parsing an attack.
             return [], "doctype not allowed"
         try:
-            root = ET.fromstring(raw)  # nosec B314 - DOCTYPE/ENTITY already refused above
+            # DOCTYPE/ENTITY were refused above, so no external entity can
+            # expand here; the parse is on bytes we already vetted.
+            root = ET.fromstring(raw)  # nosec B314
         except ET.ParseError:
             return [], "malformed XML"
 

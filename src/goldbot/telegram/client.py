@@ -13,6 +13,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from ..net import open_url
+
 API = "https://api.telegram.org/bot{token}/{method}"
 TIMEOUT = 20.0
 
@@ -46,7 +48,7 @@ class Telegram:
             url, data=data, headers={"Content-Type": "application/json"}, method="POST"
         )
         try:
-            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
+            with open_url(req, timeout=timeout or self.timeout) as resp:
                 body = json.loads(resp.read())
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]

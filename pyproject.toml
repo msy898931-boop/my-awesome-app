@@ -10,7 +10,14 @@ keywords = ["xauusd", "gold", "trading", "smc", "ict", "telegram", "bot"]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4", "ruff>=0.4", "mypy>=1.8", "coverage>=7.4"]
+dev = [
+    "pytest>=7.4",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "coverage>=7.4",
+    "bandit>=1.7",
+    "pip-audit>=2.6",
+]
 
 [project.scripts]
 goldbot = "goldbot.cli:main"
@@ -55,3 +62,10 @@ ignore = ["E501"]
 python_version = "3.10"
 ignore_missing_imports = true
 warn_unused_ignores = true
+
+[tool.bandit]
+# Only the package is scanned: tests reach the network on purpose and research
+# scripts are one-off, so a finding there is noise rather than signal. Any
+# suppression in the source carries a ``# nosec BXXX`` with the reason above it,
+# so a reviewer can weigh it instead of taking it on faith.
+exclude_dirs = ["tests", "research"]

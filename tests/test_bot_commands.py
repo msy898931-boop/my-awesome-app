@@ -97,6 +97,20 @@ def test_plan_asks_for_the_ai_layer():
     assert seen == [True]
 
 
+def test_plan_button_withholds_the_idea_during_a_blackout():
+    """The exact bypass that existed: the push honoured the rule, the button did not."""
+    rec = _Recorder()
+    bot = _bot(rec)
+    bot.pipeline.run = lambda **k: _result(
+        plan={"direction": "buy", "entry": 4050, "stop": 4044, "target": 4068, "rr": 3},
+        news={"blackout": {"active": True, "reason": "CPI"}},
+    )
+    bot._answer("555", "plan")
+    text = rec.sent[-1][1]
+    assert "4050" not in text and "4044" not in text and "4068" not in text
+    assert "محجوب" in text
+
+
 def test_news_renders_the_news_card():
     rec = _Recorder()
     bot = _bot(rec)

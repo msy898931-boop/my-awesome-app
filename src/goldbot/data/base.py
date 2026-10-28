@@ -14,6 +14,7 @@ import urllib.request
 from typing import Any
 
 from ..models import Bar, Series
+from ..net import open_url
 
 # Yahoo, Groq and several news hosts sit behind Cloudflare, which rejects a
 # custom bot User-Agent with a 4xx. A browser-like UA is required to get JSON
@@ -39,7 +40,7 @@ def http_get_json(url: str, timeout: float = DEFAULT_TIMEOUT) -> Any:
         url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with open_url(req, timeout=timeout) as resp:
             if resp.status != 200:
                 raise ProviderError(f"HTTP {resp.status}")
             raw = resp.read()
