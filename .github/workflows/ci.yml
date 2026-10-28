@@ -47,4 +47,10 @@ jobs:
         run: python -m mypy src/goldbot
 
       - name: Test (pytest)
-        run: python -m pytest tests -q
+        run: python -m coverage run -m pytest tests -q
+
+      - name: Coverage floor
+        # Fails the job when total coverage drops below ``fail_under``. The
+        # number is not the goal — a gate is what stops the reported figure
+        # from drifting away from the truth unnoticed.
+        run: python -m coverage report

@@ -1,13 +1,14 @@
 # The checks CI runs, available locally with one word.
 # `make check` is the gate; `make fix` is the convenience.
 
-.PHONY: help install check lint format type test fix clean
+.PHONY: help install check lint format type test cov fix clean
 
 help:
 	@echo "make install  — editable install with dev tools"
 	@echo "make check    — lint, format check, types, tests (what CI runs)"
-	@echo "make fix      — autofix lint and formatting"
 	@echo "make test     — the test suite only"
+	@echo "make cov      — the suite under coverage, with the floor enforced"
+	@echo "make fix      — autofix lint and formatting"
 
 install:
 	python -m pip install -e ".[dev]"
@@ -25,6 +26,10 @@ type:
 
 test:
 	python -m pytest tests -q
+
+cov:
+	python -m coverage run -m pytest tests -q
+	python -m coverage report
 
 fix:
 	python -m ruff check --fix src tests research

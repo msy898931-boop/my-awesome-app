@@ -3,8 +3,10 @@
 Yahoo's ``v8/finance/chart`` endpoint needs no key and returns true OHLC with a
 Unix open time per bar. ``GC=F`` is the COMEX front-month gold future: it is the
 deepest free series for gold, trades nearly 24 hours a day Sunday night through
-Friday, and tracks spot XAUUSD within the futures basis. It is the primary
-source; the crypto-gold providers fill the weekend gap where it is closed.
+Friday, and tracks spot XAUUSD within the futures basis. It is **disabled by
+default** (``GOLDBOT_ENABLE_YAHOO``): the contango premium biases the basis and
+the endpoint rate-limits hard, so the crypto-gold providers carry the feed
+instead.
 """
 
 from __future__ import annotations

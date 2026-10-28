@@ -162,6 +162,103 @@ def test_callback_without_a_chat_id_is_ignored():
     assert rec.sent == []
 
 
+# ── the chat allowlist ──────────────────────────────────────────────────
+
+
+class _FeedRecorder(_Recorder):
+    """A Telegram stand-in that serves a scripted list of updates once."""
+
+    def __init__(self, updates):
+        super().__init__()
+        self._updates = updates
+        self.timeouts: list[int] = []
+
+    def updates(self, offset=None, timeout=0):
+        self.timeouts.append(timeout)
+        batch, self._updates = self._updates, []
+        return batch
+
+
+def _configured_bot(rec, chat_id="555"):
+    from goldbot.config import Settings
+    from goldbot.telegram.bot import Bot
+
+    return Bot(
+        Settings(telegram_chat=chat_id),
+        state_path=os.path.join(tempfile.mkdtemp(), "s.json"),
+        tg=rec,
+    )
+
+
+def _message_update(chat_id, text, update_id=1):
+    return {"update_id": update_id, "message": {"chat": {"id": chat_id}, "text": text}}
+
+
+def _callback_update(chat_id, data, update_id=1):
+    return {
+        "update_id": update_id,
+        "callback_query": {"id": "CB", "data": data, "message": {"chat": {"id": chat_id}}},
+    }
+
+
+def test_a_message_from_the_configured_chat_is_answered():
+    rec = _FeedRecorder([_message_update("555", "/حالة")])
+    bot = _configured_bot(rec)
+    bot.handle_updates()
+    assert len(rec.sent) == 1
+    assert rec.sent[0][0] == "555"
+
+
+def test_a_message_from_a_stranger_is_dropped_and_logged():
+    rec = _FeedRecorder([_message_update("999", "/تحليل")])
+    lines: list[str] = []
+    bot = _configured_bot(rec)
+    bot._log = lines.append  # type: ignore[method-assign]
+    bot.handle_updates()
+    assert rec.sent == []
+    assert any("غير مصرّحة" in line for line in lines), lines
+
+
+def test_a_button_press_from_a_stranger_is_dropped():
+    rec = _FeedRecorder([_callback_update("999", "status")])
+    bot = _configured_bot(rec)
+    bot.handle_updates()
+    assert rec.sent == []
+    assert rec.calls == []
+
+
+def test_a_button_press_from_the_configured_chat_is_answered():
+    rec = _FeedRecorder([_callback_update("555", "status")])
+    bot = _configured_bot(rec)
+    bot.handle_updates()
+    assert rec.sent and rec.sent[0][0] == "555"
+
+
+def test_without_a_configured_chat_every_message_is_refused():
+    """A missing TELEGRAM_CHAT_ID must close the door, not open it."""
+    rec = _FeedRecorder([_message_update("555", "/حالة")])
+    bot = _configured_bot(rec, chat_id="")
+    bot.handle_updates()
+    assert rec.sent == []
+
+
+def test_the_allowlist_compares_ids_not_substrings():
+    """'555' must not admit '5555' or ' 555 ' being treated as a match by luck."""
+    rec = _FeedRecorder([_message_update("5555", "/حالة")])
+    bot = _configured_bot(rec, chat_id="555")
+    bot.handle_updates()
+    assert rec.sent == []
+
+
+def test_a_dropped_update_is_still_marked_consumed():
+    """The offset must advance past a refused update, or it replays forever."""
+    rec = _FeedRecorder([_message_update("999", "hi", update_id=41)])
+    bot = _configured_bot(rec, chat_id="555")
+    bot.handle_updates()
+    assert rec.sent == []
+    assert bot._last_offset == 42
+
+
 def test_register_commands_uses_ascii_names():
     rec = _Recorder()
     bot = _bot(rec)

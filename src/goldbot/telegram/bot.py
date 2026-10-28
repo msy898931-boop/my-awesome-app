@@ -345,12 +345,20 @@ class Bot:
         until something arrives instead of the loop only looking once per
         ``poll_seconds``. Without it a press could sit unseen for a full minute
         and the bot looked dead.
+
+        Only the configured chat is served. An answer is a market read, and a
+        read can cost an AI call, so an open door lets anyone who finds the bot
+        spend the day's Groq quota; a stranger is logged and dropped instead.
         """
         updates = self.tg.updates(self._last_offset, timeout=timeout)
         for update in updates:
             self._last_offset = update.get("update_id", 0) + 1
             callback = update.get("callback_query")
             if callback:
+                chat_id = str(((callback.get("message") or {}).get("chat") or {}).get("id", ""))
+                if not self._authorized(chat_id):
+                    self._log(f"تجاهل ضغطة زر من محادثة غير مصرّحة ({chat_id or '؟'})")
+                    continue
                 self._handle_callback(callback)
                 continue
             message = update.get("message") or update.get("edited_message") or {}
@@ -358,8 +366,21 @@ class Bot:
             chat_id = str((message.get("chat") or {}).get("id", ""))
             if not text or not chat_id:
                 continue
+            if not self._authorized(chat_id):
+                self._log(f"تجاهل رسالة من محادثة غير مصرّحة ({chat_id})")
+                continue
             self._respond(chat_id, text)
         self._save()
+
+    def _authorized(self, chat_id: str) -> bool:
+        """Whether this chat is the configured one.
+
+        With no ``TELEGRAM_CHAT_ID`` there is no configured owner, so every chat
+        is refused rather than every chat admitted — the failure mode of a
+        missing setting must not be an open bot.
+        """
+        allowed = str(self.chat_id or "").strip()
+        return bool(allowed) and str(chat_id).strip() == allowed
 
     def _handle_callback(self, callback: dict) -> None:
         """A button press: identify it, then answer in place.

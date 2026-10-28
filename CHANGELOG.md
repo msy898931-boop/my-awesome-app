@@ -7,10 +7,19 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **A chat allowlist on the bot.** `handle_updates` served *any* chat that
+  messaged the bot, and an answer is a market read that can cost a Groq call, so
+  anyone who found the bot could spend the day's quota. Only
+  `TELEGRAM_CHAT_ID` is served now; a stranger is logged and dropped, and a
+  missing chat id refuses everyone rather than admitting everyone.
+- 21 tests for the previously untested surfaces: `cli.py` (every command, both
+  failure paths of `send`, the `bot` guards) and the allowlist itself.
+- `make cov` and a `coverage` dev dependency; CI now runs the suite under
+  coverage and fails below the floor.
 - CI workflow (`.github/workflows/ci.yml`): ruff, ruff-format, mypy and pytest
   on Python 3.10 and 3.12 — the declared floor and a current interpreter.
-- `Makefile` with `check` / `fix` / `test` targets, and a `.pre-commit-config.yaml`
-  that runs the same linters before a commit.
+- `Makefile` with `check` / `fix` / `test` / `cov` targets, and a
+  `.pre-commit-config.yaml` that runs the same linters before a commit.
 - `LICENSE` (MIT) and this changelog.
 - 14 tests covering the BOS continuation, sweep reversal and `_best_zone`
   retracement rule, which had no coverage.
@@ -30,8 +39,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `DOCTYPE`/`ENTITY` declaration before parsing it, the stdlib-only defence
   against entity-expansion attacks. Verified against all three live feeds,
   which carry no DOCTYPE.
-- Coverage rose from 84% to 88%; the critical modules are now `plan.py` 95%,
-  `rss.py` 97%, `kraken.py` 97%, `config.py` 96%.
+- The suite is now measured, not asserted. `coverage` runs the tests in CI with
+  a **floor of 78%** (`[tool.coverage.report] fail_under`), so the figure can no
+  longer drift away from the truth unnoticed. Measured on this revision: **79%**
+  of `src/goldbot`; `cli.py` 95%, `plan.py` 94%, `rss.py` 97%, `kraken.py` 97%,
+  `config.py` 96%.
 - The blackout is now **enforced**, not merely printed. A high-impact window
   withholds the direction and setup from the automatic push; the idea is
   remembered and sent when the window closes, and survives a restart.
