@@ -10,7 +10,7 @@ keywords = ["xauusd", "gold", "trading", "smc", "ict", "telegram", "bot"]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4", "ruff>=0.4", "mypy>=1.8"]
+dev = ["pytest>=7.4", "ruff>=0.4", "mypy>=1.8", "coverage>=7.4"]
 
 [project.scripts]
 goldbot = "goldbot.cli:main"
@@ -26,6 +26,21 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+
+[tool.coverage.run]
+# ``source`` (not a path glob) is what makes coverage fail a module the suite
+# never imports: a file that is never loaded is counted as 0% rather than being
+# invisible to the report.
+source = ["goldbot"]
+branch = false
+
+[tool.coverage.report]
+# The floor sits a point under the measured 95% so ordinary refactoring does not
+# redden CI, while a real drop — a whole module losing its tests — does. Raise it
+# as coverage rises; never lower it to make a red run green.
+fail_under = 94
+show_missing = true
+skip_covered = false
 
 [tool.ruff]
 line-length = 100

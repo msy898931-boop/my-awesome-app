@@ -67,6 +67,11 @@ typed command.
 The automatic push is a price card: price, direction and the next release. It
 costs no model tokens — the AI prose is only produced when a card is asked for.
 
+The bot answers **only the chat named by `TELEGRAM_CHAT_ID`**. Every other chat
+is ignored and logged: an answer is a market read, and a read can cost an AI
+call, so the door is shut rather than merely discouraged. With no
+`TELEGRAM_CHAT_ID` set, the bot answers nobody.
+
 ---
 
 ## Install and run
@@ -90,7 +95,7 @@ clobbered by a stale file. `.env` is gitignored; never commit it.
 | Variable | Purpose |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Bot token from BotFather (required for the bot surface) |
-| `TELEGRAM_CHAT_ID` | Where cards are sent |
+| `TELEGRAM_CHAT_ID` | Where cards are sent, and the **only** chat the bot will answer |
 | `GROQ_API_KEY` | Groq key. Optional — without it the bot still produces plans |
 | `GROQ_MODEL` | Default `openai/gpt-oss-120b` |
 | `GROQ_FALLBACK_MODELS` | Tried in order when the primary's quota is spent |
@@ -134,8 +139,13 @@ down.
 
 ```bash
 make check                     # ruff + format + mypy + pytest (what CI runs)
-python -m pytest tests/ -q     # 230 tests
+make cov                       # the suite under coverage, floor enforced
+python -m pytest tests/ -q     # 465 tests
 ```
+
+CI runs the suite under `coverage` and **fails below a floor of 94%** of
+`src/goldbot` (measured 95% on the current revision, no module under 85%), so the
+number cannot drift away from the truth unnoticed.
 
 ---
 
@@ -210,7 +220,7 @@ src/goldbot/
   telegram/         client, formatting, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
-tests/              230 tests
+tests/              465 tests
 ```
 
 ---
