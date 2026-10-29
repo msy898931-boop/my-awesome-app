@@ -191,7 +191,7 @@ class Settings:
         Under the data root like the rest of the durable state, because its
         whole purpose is to outlive the process: the source rate-limits by IP,
         and a restart that lost the read went straight back to "could not check
-        the calendar", which withholds every idea.
+        the calendar".
         """
         return default_calendar_store()
 

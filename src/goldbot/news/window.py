@@ -15,11 +15,14 @@ a historical study calendar-aware in a way it cannot support; and the raw JSON
 card a trader acts on. What a trader sees is the card, and the card honours the
 rule.
 
-The predicate **fails closed**. When the fetch fails this function forces
-``active=False`` — an unread window is not an *open* one — and sets
-``checked=False``, which the predicate reads as "withhold anyway". An unknown
-window is not a clear one, so the safe answer to "we could not check" is to
-withhold the idea, never to proceed as though the calendar had been read.
+When the fetch fails this function forces ``active=False`` — an unread window is
+not an *open* one — and sets ``checked=False``. The predicate withholds an idea
+only on a *known open* window; an unread calendar is carried through to the card
+as a warning instead. Failing closed here once meant a rate-limited feed (the
+source limits by IP, so a 429 is routine) hid every idea for as long as the
+source stayed blocked. An unknown window is not a clear one, so the card says
+the check failed — but it shows the plan rather than hiding it, because a plan
+the trader cannot see is a plan the trader cannot weigh.
 """
 
 from __future__ import annotations

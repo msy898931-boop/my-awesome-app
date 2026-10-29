@@ -137,15 +137,16 @@ def test_the_rejected_list_is_capped_at_three():
     assert "سبب 3" not in card
 
 
-# ── an unchecked calendar must withhold, not authorise ────────────────────
+# ── an unchecked calendar must be shown, with its warning ─────────────────
 #
 # The window digest sets ``active=False`` when the calendar could not be read,
-# because an unread window is not an active one. But the predicate consulted
-# only ``active``, so a failed fetch — a 429, a dead host — silently *allowed*
-# the idea and the card showed every number as if the rule had been checked and
-# passed. That is the exact failure the project exists to prevent: an unknown
-# reported as a known. The rule now fails closed, and says which of the two it
-# is, so "no window" is never confused with "could not tell".
+# because an unread window is not an active one. The predicate first failed
+# *closed* on that — an unread calendar withheld every idea — but the feed
+# rate-limits by IP, so a transient 429 became a bot that showed nothing at all
+# for as long as the source stayed blocked. The rule now withholds only a
+# **known open window**; an unread calendar shows the idea with a warning, so
+# the trader sees the plan and knows the news check is missing from the picture.
+# "No window" is still never confused with "could not tell": the card says which.
 
 
 def _unchecked_news(**over):
@@ -162,9 +163,9 @@ def _unchecked_news(**over):
     return news
 
 
-def test_an_unchecked_calendar_blocks_the_idea():
-    """No read is not a clearance: the predicate must fail closed."""
-    assert blackout_blocks_idea(_unchecked_news()) is True
+def test_an_unchecked_calendar_does_not_block_the_idea():
+    """An unread calendar is a missing input, not a veto — the idea is shown."""
+    assert blackout_blocks_idea(_unchecked_news()) is False
 
 
 def test_a_checked_calm_calendar_still_lets_the_idea_through():
@@ -172,11 +173,12 @@ def test_a_checked_calm_calendar_still_lets_the_idea_through():
     assert blackout_blocks_idea({"blackout": {"active": False, "checked": True}}) is False
 
 
-def test_an_unchecked_calendar_withholds_the_plan_numbers():
+def test_an_unchecked_calendar_still_shows_the_plan_numbers():
+    """The numbers go out — a failed news check must not hide the trade."""
     card = format_plan(_plan(), news=_unchecked_news())
-    assert "4050" not in card  # entry
-    assert "4044" not in card  # stop
-    assert "4068" not in card  # target
+    assert "4050" in card  # entry
+    assert "4044" in card  # stop
+    assert "4068" in card  # target
 
 
 def test_an_unchecked_calendar_says_the_read_failed_not_that_a_window_is_open():
@@ -186,6 +188,18 @@ def test_an_unchecked_calendar_says_the_read_failed_not_that_a_window_is_open():
     assert "نافذة خبر عالي التأثير" not in card
 
 
+def test_an_unchecked_calendar_does_not_degrade_the_plan_card():
+    """The trade card is *not* replaced by the no-trade read on a failed check.
+
+    This is the regression the policy exists for: a rate-limited feed must not
+    turn a live plan into "no trade", because the trader then sees nothing at all
+    while the plan sits behind a blocked source."""
+    card = format_plan(_plan(), news=_unchecked_news())
+    assert "لا توجد صفقة" not in card, "a failed check must not degrade the card"
+    assert "الدخول" in card and "الوقف" in card and "الهدف" in card
+    assert "تعذّر فحص التقويم" in card, "but the failed check is still stated"
+
+
 def test_a_blackout_predating_the_checked_flag_is_still_honoured():
     """News built without the flag (older callers, the prompt payload) still blocks
     on ``active`` — the flag is added, not required."""
@@ -193,10 +207,10 @@ def test_a_blackout_predating_the_checked_flag_is_still_honoured():
     assert blackout_blocks_idea({"blackout": {"active": False}}) is False
 
 
-def test_the_status_card_names_an_unchecked_calendar_not_an_open_window():
-    """The withheld no-trade card must say *which* fact withheld the idea."""
+def test_the_status_card_does_not_claim_a_block_when_only_the_read_failed():
+    """A failed read is not an open window: the no-trade card must not say محجوب."""
     card = format_status(_plan(), news=_unchecked_news())
-    assert "محجوب" in card
+    assert "محجوب" not in card
     assert "تعذّر فحص التقويم" in card
     assert "نافذة خبر عالي التأثير" not in card
 
