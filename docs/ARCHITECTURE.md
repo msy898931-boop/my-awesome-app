@@ -85,20 +85,25 @@ enforces the minimum reward-to-risk ratio. `risk.py` sizes a position. A plan
 that cannot meet the R:R floor is **rejected with a reason**, not emitted with
 a poor ratio.
 
-### `backtest/` — the honest scoreboard, and the control
+### `backtest/` — the honest scoreboard, the metrics, and the control
 
 `engine.py` walks the strategy forward over closed bars — no look-ahead, a limit
 entry that only fills if price actually reaches it, the stop assumed hit before
 the target when one bar touches both — and charges a cost per trade, so the
-reported numbers are net. `control.py` answers the question the scoreboard
-cannot: given the *same trade geometry* but **random entry times**, how often
-does chance do as well? It builds two surrogate sets — one drawn from the whole
-walkable window, one matched to each trade's own trend regime — and a cell is
-called `skill` only if it beats both at α = 0.05, `beta` if it loses to either,
-`inconclusive` if the sample cannot decide. The distinction between the two is
-the whole exercise: on the historical data a long-gold bias beat a naive random
-control, and only the regime-matched control exposed it as drift. `research/
-study_control.py` runs it over the archive.
+reported numbers are net. `report.py` judges the result: expectancy, profit
+factor, payoff, drawdown in R, losing streaks, Sharpe and Sortino per trade,
+each a pure function of the trade list. A metric that cannot be computed is
+`None` and prints as an em dash, never as a zero. `study.py` runs the whole
+thing as a deep study — the longest series per frame, contiguous out-of-sample
+windows, and the control — reached by `cli study`. `control.py` answers the
+question the scoreboard cannot: given the *same trade geometry* but **random
+entry times**, how often does chance do as well? It builds two surrogate sets —
+one drawn from the whole walkable window, one matched to each trade's own trend
+regime — and a cell is called `skill` only if it beats both at α = 0.05, `beta`
+if it loses to either, `inconclusive` if the sample cannot decide. The
+distinction between the two is the whole exercise: on the historical data a
+long-gold bias beat a naive random control, and only the regime-matched control
+exposed it as drift. `research/study_control.py` runs it over the archive.
 
 ### `news/` — calendar, wires, macro, blackout
 
@@ -207,6 +212,7 @@ python -m goldbot.cli card        # the Telegram card as text
 python -m goldbot.cli news        # calendar, headlines, macro
 python -m goldbot.cli bot         # the polling loop
 python -m goldbot.cli backtest    # the historical study
+python -m goldbot.cli study       # the deep study (metrics, windows, control)
 ```
 
 Or as a container — see the Docker section of the [README](../README.md).

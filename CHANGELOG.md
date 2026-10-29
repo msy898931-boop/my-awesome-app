@@ -34,6 +34,24 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running `python -m goldbot.cli card`, not by reading the code.
 
 ### Added
+- **A professional backtest: deep data, out-of-sample windows, and every
+  headline metric.** The old `backtest` command walked whatever the archive
+  held — two weeks — and printed a total. `backtest/report.py` now computes
+  what a trader actually asks of a result: expectancy, profit factor, payoff,
+  max drawdown in R, longest losing streak, Sharpe and Sortino per trade, and a
+  best/worst trade. Each is a pure function of the trade list, so it is
+  deterministic and testable without a feed. The rule that governs all of it:
+  a metric that cannot be computed is `None` and prints as an em dash, **never
+  as zero** — a thin sample must not read as a real number. `backtest/study.py`
+  runs it as a study: it loads the deepest series each frame can offer (the
+  paging Binance feed reaches years, so the sample is long enough to judge), cuts
+  the trades into contiguous out-of-sample windows and scores each one so a
+  result carried by a single stretch of months is exposed as a regime, and puts
+  the whole sample through the matched control so the number is split into skill
+  and drift rather than asserted. New command: `study --tf H1 --windows 5`, with
+  a printable report and a `--json` form. On 833 days of H1 (800 filled trades)
+  it returns **beta**, the same verdict the earlier work reached by hand — now
+  reproduced end to end on a sample twenty times longer.
 - **A matched control for the strategy, so its return can be split into skill
   and drift.** The historical study concluded the setup is "beta to gold, not
   skill" from the regime table alone; that conclusion is now measured rather

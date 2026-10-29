@@ -25,11 +25,13 @@ def main(argv: list[str] | None = None) -> int:
         "command",
         nargs="?",
         default="card",
-        choices=["analyse", "analyze", "card", "bot", "send", "news", "backtest"],
+        choices=["analyse", "analyze", "card", "bot", "send", "news", "backtest", "study"],
     )
     parser.add_argument("--no-ai", action="store_true", help="skip the AI layer")
     parser.add_argument("--no-news", action="store_true", help="skip the news layer")
     parser.add_argument("--json", action="store_true", help="raw JSON output")
+    parser.add_argument("--tf", default="", help="primary frame for the study (H1, H4, …)")
+    parser.add_argument("--windows", type=int, default=5, help="out-of-sample windows")
     args = parser.parse_args(argv)
 
     settings = load_settings()
@@ -95,6 +97,17 @@ def main(argv: list[str] | None = None) -> int:
 
         report = run_backtest(settings)
         print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "study":
+        from .backtest.report import format_report
+        from .backtest.study import run_study
+
+        study = run_study(settings, primary_tf=args.tf or None, window_count=args.windows)
+        if args.json:
+            print(json.dumps(study, ensure_ascii=False, indent=2, default=str))
+        else:
+            print(format_report(study))
         return 0
 
     parser.print_help()
