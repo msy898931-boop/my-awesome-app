@@ -45,6 +45,22 @@ def _offline(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _isolated_calendar_store(monkeypatch, tmp_path):
+    """Keep the saved calendar read out of the repo and out of other tests.
+
+    ``digest`` builds a real feed with a store on disk, and a handful of tests
+    call it without stubbing the feeds. Pointing that store at a per-test tmp
+    file keeps the suite hermetic: a developer's local ``.goldbot/calendar.json``
+    can never be read, and one test's saved read can never leak into the next.
+    """
+    monkeypatch.setattr(
+        "goldbot.news.window.default_calendar_store", lambda: str(tmp_path / "cal.json")
+    )
+    monkeypatch.setattr("goldbot.news.window._FEEDS", None)
+    yield
+
+
 def make_bars(
     prices: list[tuple[float, float, float, float]], start: int = 1_700_000_000, step: int = 900
 ) -> list[Bar]:

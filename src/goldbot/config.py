@@ -67,6 +67,19 @@ def _default_archive_dir() -> str:
     return ".goldbot/archive"
 
 
+def default_calendar_store() -> str:
+    """The saved calendar read, under the shared data root when one is set.
+
+    Module-level so the news layer can resolve it without building a whole
+    ``Settings``; ``Settings.calendar_store_path`` reuses it so the two can never
+    disagree about where the file lives.
+    """
+    data_dir = os.environ.get("GOLDBOT_DATA_DIR", "").strip()
+    if data_dir:
+        return str(Path(data_dir) / "calendar.json")
+    return ".goldbot/calendar.json"
+
+
 def _timeframes() -> tuple[str, ...]:
     """The structural frames, in canonical order, filtered by the allow-list."""
     canonical = ("M1", "M5", "M15", "M30", "H1", "H4", "D1")
@@ -170,6 +183,17 @@ class Settings:
         if self.data_dir:
             return str(Path(self.data_dir) / "bot_state.json")
         return "run/bot_state.json"
+
+    @property
+    def calendar_store_path(self) -> str:
+        """The last good calendar read, so a blocked fetch is survivable.
+
+        Under the data root like the rest of the durable state, because its
+        whole purpose is to outlive the process: the source rate-limits by IP,
+        and a restart that lost the read went straight back to "could not check
+        the calendar", which withholds every idea.
+        """
+        return default_calendar_store()
 
     @property
     def ai_enabled(self) -> bool:

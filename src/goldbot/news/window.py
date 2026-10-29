@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import time
 
-from .calendar import CalendarFeed, Event
+from ..config import default_calendar_store
+from .calendar import CalendarFeed, CalendarStore, Event
 from .macro import macro_context
 from .rss import RssFeed
 
@@ -43,7 +44,7 @@ _FEEDS: tuple[CalendarFeed, RssFeed] | None = None
 def _feeds() -> tuple[CalendarFeed, RssFeed]:
     global _FEEDS
     if _FEEDS is None:
-        _FEEDS = (CalendarFeed(), RssFeed())
+        _FEEDS = (CalendarFeed(store=CalendarStore(default_calendar_store())), RssFeed())
     return _FEEDS
 
 
@@ -108,18 +109,24 @@ def digest(now: float | None = None, with_macro: bool = True) -> dict:
     )[:5]
 
     window = blackout(high, now)
-    if not calendar.ok:
-        # Every card reads ``reason``, so the honesty has to live here rather
-        # than in each formatter. An unchecked calendar is not a quiet one.
-        suffix = " (بيانات قديمة)" if calendar.stale else ""
+    if not calendar.usable:
+        # Nothing to reason about at all — no live read and no saved one. Every
+        # card reads ``reason``, so the honesty has to live here rather than in
+        # each formatter. An unchecked calendar is not a quiet one.
         window = {
             **window,
             "active": False,
             "checked": False,
-            "reason": f"تعذّر فحص التقويم: {calendar.error or 'غير متاح'}{suffix}",
+            "reason": f"تعذّر فحص التقويم: {calendar.error or 'غير متاح'}",
         }
     else:
+        # A usable calendar — either a fresh read or a saved one standing in for
+        # a blocked fetch. The window is *known*, so the idea is not withheld on
+        # a transient block. A stale read is named as such: the trader sees the
+        # read is old rather than being told it is current.
         window = {**window, "checked": True}
+        if calendar.stale:
+            window["reason"] = f"{window['reason']} (بيانات قديمة)"
 
     macro = macro_context(now) if with_macro else {}
 
@@ -147,6 +154,7 @@ def digest(now: float | None = None, with_macro: bool = True) -> dict:
             "calendar_ok": calendar.ok,
             "calendar_error": calendar.error,
             "calendar_stale": calendar.stale,
+            "calendar_usable": calendar.usable,
             "rss_ok": rss.ok,
             "rss_error": rss.error,
             "rss_stale": rss.stale,

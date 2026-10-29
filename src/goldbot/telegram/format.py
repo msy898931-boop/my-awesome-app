@@ -435,16 +435,29 @@ def format_news(news: dict) -> str:
     lines = ["📰 *الأخبار والذهب — الآن*", ""]
     source = news.get("source") or {}
     calendar_ok = source.get("calendar_ok", True)
-    stale = source.get("calendar_stale", False)
+    usable = source.get("calendar_usable", calendar_ok)
     blackout = news.get("blackout") or {}
 
-    # Never call the window calm on a failed read. "No events" and "no feed"
-    # look identical in the data, and only the card can tell them apart.
-    if not calendar_ok:
+    # Three facts, and the card must not blur them: a fresh read, a saved read
+    # standing in for a blocked one, or nothing at all. "No events" and "no
+    # feed" look identical in the data, and only the card can tell them apart.
+    if not usable:
         reason = _esc(str(source.get("calendar_error") or "مصدر التقويم غير متاح"))
-        age = " (بيانات قديمة)" if stale else ""
-        lines.append(f"⚠️ *تعذّر فحص التقويم*{age}")
+        lines.append("⚠️ *تعذّر فحص التقويم*")
         lines.append(f"_المصدر لم يستجب: {reason} — لا يمكن الجزم بوجود خبر_")
+    elif not calendar_ok:
+        # A saved read is in use: the window is known, but it is not this
+        # minute's. Say both, so "stale" is not mistaken for "current".
+        reason = _esc(str(source.get("calendar_error") or "المصدر لم يستجب"))
+        lines.append("🕗 *التقويم من قراءة محفوظة (بيانات قديمة)*")
+        lines.append(f"_تعذّر التحديث الآن: {reason} — تُعرض آخر قراءة ناجحة_")
+        if blackout.get("active"):
+            lines.append("🚨 *نافذة خبر عالي التأثير الآن*")
+            for e in (blackout.get("imminent") or [])[:3]:
+                lines.append(
+                    f"  • {_esc(str(e.get('title')))} "
+                    f"[{_esc(str(e.get('country')))}] {_when(e.get('minutes'))}"
+                )
     elif blackout.get("active"):
         lines.append("🚨 *نافذة خبر عالي التأثير الآن*")
         for e in (blackout.get("imminent") or [])[:3]:

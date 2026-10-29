@@ -8,6 +8,7 @@ identical in the data. These tests pin the distinction.
 
 from __future__ import annotations
 
+import time
 import urllib.error
 
 from goldbot.news.calendar import CalendarFeed, _retry_after
@@ -125,6 +126,7 @@ def test_a_failed_calendar_does_not_render_as_calm(monkeypatch):
         ok = False
         error = "HTTP 429"
         stale = False
+        usable = False
 
         def high_impact(self):
             return []
@@ -141,6 +143,7 @@ def test_a_checked_calendar_can_still_render_as_calm(monkeypatch):
         ok = True
         error = ""
         stale = False
+        usable = True
 
         def high_impact(self):
             return []
@@ -156,6 +159,7 @@ def test_the_card_never_prints_a_bare_none_for_a_missing_forecast(monkeypatch):
         ok = True
         error = ""
         stale = False
+        usable = True
 
         def high_impact(self):
             from goldbot.news.calendar import _parse
@@ -175,3 +179,174 @@ class _Rss:
 
     def relevant(self, limit=8):
         return []
+
+
+# ── the saved read: a blocked fetch must not silence the bot ─────────────
+#
+# The source rate-limits by IP, so a 429 is routine. Without a saved read a
+# blocked fetch meant "could not check the calendar", which the blackout turns
+# into "withhold the idea" — a transient block on the feed produced no ideas at
+# all. These tests pin the fallback and, just as important, its limits: it must
+# never serve a week that is over, and it must never replace a live fetch.
+
+
+FUTURE = "2030-01-02T14:00:00-04:00"  # far ahead, so it survives any real clock
+
+
+def _future_rows():
+    return [
+        {
+            "title": "Federal Funds Rate",
+            "country": "USD",
+            "impact": "High",
+            "date": FUTURE,
+            "forecast": "4.00%",
+            "previous": "4.00%",
+        }
+    ]
+
+
+def _store_with(tmp_path, events, saved_at):
+    from goldbot.news.calendar import CalendarStore
+
+    store = CalendarStore(tmp_path / "calendar.json")
+    store.save(events, now=saved_at)
+    return store
+
+
+def test_a_saved_read_is_restored_and_served_when_the_fetch_fails(tmp_path):
+    from goldbot.news.calendar import _parse
+
+    events = [e for e in (_parse(r) for r in _future_rows()) if e]
+    store = _store_with(tmp_path, events, saved_at=time.time())
+
+    feed = CalendarFeed(store=store)
+    feed._fetch = lambda: ([], "HTTP 429")
+    got = feed.events()
+
+    assert [e.title for e in got] == ["Federal Funds Rate"]
+    assert feed.ok is False, "a saved read is not a successful fetch"
+    assert feed.stale is True, "and it must be named as stale"
+    assert feed.usable is True, "but it is still something to reason about"
+    assert feed.error == "HTTP 429", "the failure is still reported"
+
+
+def test_a_saved_read_still_attempts_a_live_fetch(tmp_path):
+    """The fallback is a fallback, never a reason to skip the source."""
+    from goldbot.news.calendar import _parse
+
+    events = [e for e in (_parse(r) for r in _future_rows()) if e]
+    store = _store_with(tmp_path, events, saved_at=time.time())
+    feed = CalendarFeed(store=store)
+
+    calls = {"n": 0}
+
+    def counted():
+        calls["n"] += 1
+        return [], "HTTP 429"
+
+    feed._fetch = counted
+    feed.events()
+    assert calls["n"] == 1, "the source is still asked first"
+
+
+def test_a_successful_fetch_overwrites_the_saved_read(tmp_path):
+    from goldbot.news.calendar import CalendarStore
+
+    store = CalendarStore(tmp_path / "calendar.json")
+    feed = CalendarFeed(store=store)
+    feed._fetch = lambda: (_future_rows(), "")
+    feed.events()
+
+    assert store.path.exists()
+    restored = store.load()
+    assert [e.title for e in restored] == ["Federal Funds Rate"]
+
+
+def test_an_expired_saved_read_does_not_stand_in(tmp_path):
+    from goldbot.news.calendar import MAX_STALE, _parse
+
+    events = [e for e in (_parse(r) for r in _future_rows()) if e]
+    store = _store_with(tmp_path, events, saved_at=1_000.0)
+    assert store.load(now=1_000.0 + MAX_STALE + 1) == []
+
+
+def test_a_saved_week_that_is_over_does_not_stand_in(tmp_path):
+    """Serving last week's schedule as this week's is worse than saying nothing.
+
+    The store is *fresh* here (saved just now), so only the "every event is in
+    the past" rule can reject it — not the age rule. That is the rule this test
+    exists to pin: a fallback may not describe a week that has already ended.
+    """
+    from goldbot.news.calendar import _parse
+
+    rows = _future_rows()
+    rows[0]["date"] = "2020-01-02T14:00:00-04:00"  # a week long gone
+    events = [e for e in (_parse(r) for r in rows) if e]
+    now = time.time()
+    store = _store_with(tmp_path, events, saved_at=now)
+    assert store.load(now=now) == [], "all events are in the past"
+
+
+def test_a_corrupt_store_is_a_no_op(tmp_path):
+    from goldbot.news.calendar import CalendarStore
+
+    path = tmp_path / "calendar.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert CalendarStore(path).load() == []
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+    assert CalendarStore(path).load() == []
+
+
+def test_a_stale_read_does_not_withhold_the_idea(monkeypatch):
+    """The point of the fix: a blocked fetch is not an unknown window."""
+    from goldbot.news import window as window_mod
+
+    class _Stale:
+        ok = False
+        error = "HTTP 429"
+        stale = True
+        usable = True
+
+        def high_impact(self):
+            return []
+
+    monkeypatch.setattr("goldbot.news.window._feeds", lambda: (_Stale(), _Rss()))
+    out = window_mod.digest(now=1000.0)
+    assert out["blackout"]["checked"] is True
+    assert out["source"]["calendar_stale"] is True
+    assert out["source"]["calendar_usable"] is True
+
+
+def test_nothing_saved_and_nothing_fetched_still_withholds(monkeypatch):
+    """The fail-closed rule survives: no read at all is still an unknown."""
+    from goldbot.news import window as window_mod
+
+    class _Dead:
+        ok = False
+        error = "HTTP 429"
+        stale = False
+        usable = False
+
+        def high_impact(self):
+            return []
+
+    monkeypatch.setattr("goldbot.news.window._feeds", lambda: (_Dead(), _Rss()))
+    out = window_mod.digest(now=1000.0)
+    assert out["blackout"]["checked"] is False
+
+
+def test_the_news_card_names_a_saved_read_as_stale(monkeypatch):
+    class _Stale:
+        ok = False
+        error = "HTTP 429"
+        stale = True
+        usable = True
+
+        def high_impact(self):
+            return []
+
+    monkeypatch.setattr("goldbot.news.window._feeds", lambda: (_Stale(), _Rss()))
+    card = format_news(digest(now=1000.0))
+    assert "بيانات قديمة" in card
+    assert "تعذّر فحص التقويم" not in card, "the read is stale, not absent"
