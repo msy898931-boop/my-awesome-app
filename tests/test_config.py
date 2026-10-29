@@ -129,6 +129,16 @@ def test_ai_is_disabled_without_a_key(monkeypatch):
 # ── the data root: what must outlive the process ─────────────────────────
 
 
+class _NoSend:
+    """A Telegram stand-in that sends nothing, so a Bot can be built without a token."""
+
+    def send(self, *args, **kwargs):
+        return True
+
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+
 def test_no_data_dir_keeps_the_historical_relative_paths(monkeypatch):
     """A local run or a plain container must behave exactly as before."""
     monkeypatch.delenv("GOLDBOT_DATA_DIR", raising=False)
@@ -170,7 +180,7 @@ def test_the_bot_takes_its_state_path_from_the_settings(monkeypatch, tmp_path):
     from goldbot.telegram.bot import Bot
 
     monkeypatch.setenv("GOLDBOT_DATA_DIR", str(tmp_path))
-    bot = Bot(Settings(telegram_chat="1"))
+    bot = Bot(Settings(telegram_chat="1"), tg=_NoSend())
     assert bot.state_path == str(tmp_path / "bot_state.json")
 
 
@@ -180,7 +190,7 @@ def test_an_explicit_state_path_still_wins(monkeypatch, tmp_path):
 
     monkeypatch.setenv("GOLDBOT_DATA_DIR", str(tmp_path / "ignored"))
     explicit = str(tmp_path / "custom.json")
-    bot = Bot(Settings(telegram_chat="1"), state_path=explicit)
+    bot = Bot(Settings(telegram_chat="1"), state_path=explicit, tg=_NoSend())
     assert bot.state_path == explicit
 
 
@@ -191,10 +201,10 @@ def test_the_daily_ai_counter_survives_a_restart_under_a_data_root(monkeypatch, 
     from goldbot.telegram.bot import Bot
 
     monkeypatch.setenv("GOLDBOT_DATA_DIR", str(tmp_path))
-    first = Bot(Settings(telegram_chat="1"))
+    first = Bot(Settings(telegram_chat="1"), tg=_NoSend())
     first._ai_day = time.strftime("%Y-%m-%d", time.gmtime())
     first._ai_calls = 7
     first._save()
 
-    reborn = Bot(Settings(telegram_chat="1"))
+    reborn = Bot(Settings(telegram_chat="1"), tg=_NoSend())
     assert reborn._ai_today() == 7, "the cap would reset on every deploy without this"
