@@ -47,6 +47,23 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   match the verdicts (BOS climbs, CHoCH oscillates, the sweep spikes then
   bleeds). The per-setup finals sum exactly to the pooled final, which the
   suite asserts.
+### Added
+- **A time axis for the curve.** `cli study --chart-time` (and
+  `--chart-time-setups`) draws the cumulative-R curve against dates instead of
+  trade rank; `--svg-dir` now dates the SVG x-axis too. Rank spaces every study
+  evenly, which hides that fills cluster: twenty trades in a week and twenty
+  across a year look identical. `report.equity_points` carries the clock
+  alongside the running total, sorted oldest first, and the suite asserts the
+  dated points and the plain curve agree value for value.
+### Fixed
+- **The reported window now says where the trades are, not just the bars.**
+  The study quoted the *bar* span ("833 days") as the sample, but the fills
+  sat in less than half of it — the higher frames a plan needs were empty for
+  the first half, so no setup could fire. The report now prints
+  `نافذة الصفقات الفعلية` beside the bar window and, when the trades cover
+  under 90% of it, the shortfall (`49% من نافذة الشموع فقط`). The dated curve
+  was what exposed the gap: against trade rank the first fill always sits at
+  column zero, so an empty year at the front is invisible.
 
 ### Fixed
 - **A rate-limited calendar silently withheld every trade idea.** The economic

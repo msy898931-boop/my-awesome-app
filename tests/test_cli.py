@@ -150,6 +150,26 @@ def test_study_chart_setups_prints_one_curve_per_setup(patched, monkeypatch, cap
     assert "bos" in out and "sweep" in out
 
 
+def test_study_chart_time_prints_a_dated_curve(patched, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    assert cli.main(["study", "--chart-time"]) == 0
+    out = capsys.readouterr().out
+    assert "منحنى رأس المال" in out and "2023-11-14" in out
+
+
+def test_study_chart_time_setups_prints_each_setup_dated(patched, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    assert cli.main(["study", "--chart-time-setups"]) == 0
+    out = capsys.readouterr().out
+    assert "bos" in out and "sweep" in out
+
+
 def test_study_svg_dir_writes_pooled_and_per_setup(patched, monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(
         "goldbot.backtest.study.run_study",
@@ -163,6 +183,10 @@ def test_study_svg_dir_writes_pooled_and_per_setup(patched, monkeypatch, capsys,
     for path in out_dir.iterdir():
         body = path.read_text(encoding="utf-8")
         assert body.startswith("<svg") and "<polyline" in body
+    # A curve of more than one point is dated; a single point has no axis to
+    # date, so it keeps the rank caption — the honest reading either way.
+    assert "2023-11-1" in (out_dir / "all.svg").read_text(encoding="utf-8")
+    assert "last trade (1)" in (out_dir / "sweep.svg").read_text(encoding="utf-8")
 
 
 def _study_result() -> dict:
@@ -203,10 +227,22 @@ def _study_result() -> dict:
         "primary_tf": "H1",
         "bars": 100,
         "span_days": 3,
+        "period": ("2023-11-14", "2023-11-17"),
+        "trade_period": ("2023-11-14", "2023-11-16"),
+        "trade_span_days": 2,
+        "binding_tf": None,
+        "binding_span_days": 0,
         "windows": 1,
         "metrics": metrics(trades),
         "equity_curve": [1.0, 0.0, 2.0, 1.0],
+        "equity_points": [
+            (1_700_000_000 + i * 3600, v) for i, v in enumerate((1.0, 0.0, 2.0, 1.0))
+        ],
         "setup_curves": {"bos": [1.0, 0.0, 2.0], "sweep": [-1.0]},
+        "setup_points": {
+            "bos": [(1_700_000_000 + i * 3600, v) for i, v in enumerate((1.0, 0.0, 2.0))],
+            "sweep": [(1_700_000_000 + 9 * 3600, -1.0)],
+        },
         "consistency": {"windows": 1, "positive": 1, "share": 1.0, "thin": 0},
         "control": None,
         "setup_control": {},

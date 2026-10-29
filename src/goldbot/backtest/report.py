@@ -151,6 +151,22 @@ def equity_curve(trades: Sequence[Trade]) -> list[float]:
     return curve
 
 
+def equity_points(trades: Sequence[Trade]) -> list[tuple[int, float]]:
+    """``(time, cumulative R)`` after each filled trade, oldest first.
+
+    The same curve as :func:`equity_curve`, but carrying the clock. Rank hides
+    that trades cluster: twenty fills in one week and twenty across a year look
+    identical against a trade counter. Plotting against time is what shows a
+    run-up that took three months and a collapse that took three days.
+    """
+    points = []
+    cum = 0.0
+    for t in sorted(_filled(trades), key=lambda t: t.time):
+        cum += t.r_multiple
+        points.append((t.time, round(cum, 3)))
+    return points
+
+
 def windows(trades: Sequence[Trade], count: int) -> list[list[Trade]]:
     """Split filled trades into ``count`` contiguous blocks, oldest first.
 
@@ -224,6 +240,28 @@ def format_report(result: dict) -> str:
     if result.get("period"):
         span += f" ({result['period'][0]} → {result['period'][1]})"
     lines.append(f"  النافذة الزمنية: {span} | نوافذ: {result['windows']}")
+    # The bars and the trades need not cover the same calendar: a long warmup or
+    # a gate that opens late can leave half the sample trade-free, and the bar
+    # span would then overstate the evidence. Say where the trades actually are.
+    tp = result.get("trade_period")
+    if tp and result.get("trade_span_days") is not None:
+        share = (
+            round(100 * result["trade_span_days"] / result["span_days"])
+            if result.get("span_days")
+            else None
+        )
+        line = f"  نافذة الصفقات الفعلية: {result['trade_span_days']} يوم ({tp[0]} → {tp[1]})"
+        if share is not None and share < 90:
+            line += f" — {share}% من نافذة الشموع فقط"
+        lines.append(line)
+        # When the trades stop short, say *which* frame opened the gate.
+        # Otherwise the shortfall reads as a strategy that went quiet, not as a
+        # data cap — the low frame a plan needs simply has not reached back yet.
+        if share is not None and share < 90 and result.get("binding_tf"):
+            lines.append(
+                f"    السبب: الفريم {result['binding_tf']} يغطّي "
+                f"{result['binding_span_days']} يوم فقط (سقف الأشرطة)"
+            )
     lines.append("")
     lines.append("  ── المقاييس الرئيسية ──")
     lines.append(f"    التوقّع (Expectancy)     : {_fmt(m['expectancy'])} R للصفقة")
