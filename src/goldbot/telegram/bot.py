@@ -213,7 +213,12 @@ class Bot(CommandScreens):
             else:
                 self._pending_key = None
             self._save()
-            text = format_price(result.spot, None if withheld else result.plan, result.news)
+            text = format_price(
+                result.spot,
+                None if withheld else result.plan,
+                result.news,
+                withheld=withheld,
+            )
             try:
                 ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
             except TelegramError as exc:

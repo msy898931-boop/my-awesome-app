@@ -20,7 +20,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   priming, the send-failure and rejected-send log lines, the malformed-update
   guards, the `run_forever` cadence (including the skip until the interval is
   due), and the `PORT` / self-ping wiring. `telegram/bot.py` went from 79% to
-  99% covered; the suite from 539 to 553 tests.
+  99% covered; the suite from 539 to 563 tests.
 - **A container image (`Dockerfile`, `docker-compose.yml`).** Two stages: a
   wheel is built, then installed into a runtime that carries only the
   interpreter and the package — no build toolchain, no pip cache. The process
@@ -132,7 +132,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the state. The three files each have one job, and the names the old module
   exported are re-exported from `bot.py`, so no caller changed. The coverage
   floor rises to 96% and applies to `goldkit` as well as `goldbot` (measured
-  98% across both, no module under 90%; 553 tests including the starter kit's).
+  98% across both, no module under 90%; 563 tests including the starter kit's).
 - `news/rss.py` refuses an oversized body and any document carrying a
   `DOCTYPE`/`ENTITY` declaration before parsing it, the stdlib-only defence
   against entity-expansion attacks. Verified against all three live feeds,
@@ -161,6 +161,18 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `GOLDBOT_ENABLE_ARCHIVE` and `GOLDBOT_ARCHIVE_DIR`.
 
 ### Fixed
+- **The blackout failed open on a calendar it could not read.** `digest` sets
+  `active=False` when the fetch fails — an unread window is not an *open* one —
+  but `blackout_blocks_idea` consulted only `active`, so a rate-limited feed
+  silently *authorised* the idea and the card printed every number as if the
+  rule had been checked and passed. A `429` on the calendar was, in effect, a
+  licence to trade into a possible FOMC release. The predicate now fails
+  **closed**: an unread calendar withholds the idea exactly as an open window
+  does, and the cards name which of the three facts they hold — a window is
+  open, no window was found, or the window could not be read — so "no news" is
+  never confused with "could not tell". `format_price` carries the reason
+  explicitly, because it cannot tell a withheld idea from an absent one on its
+  own, and the withheld idea is still delivered once a read succeeds.
 - `telegram/bot.py` `_save` created the state directory *outside* its `try`, so
   an unwritable state path raised `OSError` straight out of `handle_updates` —
   which the run loop only guards against `TelegramError`. A read-only mount or a

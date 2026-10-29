@@ -39,7 +39,12 @@ def _esc(text: str) -> str:
     return text
 
 
-def format_price(spot: dict | None, plan: dict | None = None, news: dict | None = None) -> str:
+def format_price(
+    spot: dict | None,
+    plan: dict | None = None,
+    news: dict | None = None,
+    withheld: bool = False,
+) -> str:
     """The automatic push: live price, direction, and the next release.
 
     Deliberately small, and deliberately free. Everything here is deterministic,
@@ -47,6 +52,11 @@ def format_price(spot: dict | None, plan: dict | None = None, news: dict | None 
     produced when the trader asks for the full card. The price is the one thing
     worth pushing unprompted, because it changes on every read while the plan
     behind it rarely does.
+
+    ``withheld`` is passed by the caller because the caller is what stripped the
+    plan: this function cannot tell "an idea was withheld" from "there was no
+    idea", and saying the first when the second is true would be its own small
+    lie. It is only used to name *why* a direction is missing.
     """
     lines = ["🥇 *XAUUSD*"]
     price = (spot or {}).get("close")
@@ -64,7 +74,12 @@ def format_price(spot: dict | None, plan: dict | None = None, news: dict | None 
 
     wire = news or {}
     upcoming = wire.get("upcoming") or []
-    if (wire.get("blackout") or {}).get("active"):
+    if calendar_unchecked(news):
+        # Not "a window is open" — that is a different claim. The read failed, so
+        # the window is unknown; if an idea was withheld, say that is why.
+        note = " — حُجبت الفكرة احتياطاً" if withheld else ""
+        lines.append(f"⚠️ *تعذّر فحص التقويم{note}*")
+    elif (wire.get("blackout") or {}).get("active"):
         lines.append("🚨 *نافذة خبر عالي التأثير الآن*")
     elif upcoming:
         nxt = upcoming[0]
@@ -74,6 +89,21 @@ def format_price(spot: dict | None, plan: dict | None = None, news: dict | None 
     return "\n".join(lines)
 
 
+def calendar_unchecked(news: dict | None) -> bool:
+    """Whether the calendar could not be read, so the window is unknown.
+
+    ``digest`` sets ``checked=False`` when the fetch failed and forces
+    ``active=False``, because an unread window is not an *open* one. But an
+    unknown window is not a *clear* one either, and reading the forced ``False``
+    as permission is how a rate-limited feed would authorise an idea the rule
+    exists to withhold. The distinction is carried in the data so a card can say
+    which of the three facts it has: a window is open, no window was found, or
+    the window could not be read.
+    """
+    blackout = (news or {}).get("blackout") or {}
+    return blackout.get("checked") is False and not blackout.get("active")
+
+
 def blackout_blocks_idea(news: dict | None) -> bool:
     """Whether the stated rule withholds a *new* idea right now.
 
@@ -81,8 +111,13 @@ def blackout_blocks_idea(news: dict | None) -> bool:
     for — so the rule cannot be honoured on one and bypassed by a button on the
     other. The blackout is a stated rule, and a stated rule with an exception is
     not a rule.
+
+    It fails **closed**: an unread calendar withholds the idea exactly as an open
+    window does. The two are different facts and the cards name which it is, but
+    the safe answer to "we could not check" is to withhold, never to proceed.
     """
-    return bool((news or {}).get("blackout", {}).get("active"))
+    blackout = (news or {}).get("blackout") or {}
+    return bool(blackout.get("active")) or calendar_unchecked(news)
 
 
 def macro_lines(news: dict | None, direction: str = "none") -> list[str]:
@@ -174,13 +209,23 @@ def format_status(plan: dict, analysis: dict | None = None, news: dict | None = 
     which is a different claim about the world.
     """
     withheld = blackout_blocks_idea(news) and plan.get("direction") in {"buy", "sell"}
+    unchecked = calendar_unchecked(news)
     lines = ["🥇 *XAUUSD — لا توجد صفقة الآن*", ""]
     if withheld:
-        lines += [
-            "🚨 *يوجد نموذج لكنه محجوب* — نافذة خبر عالي التأثير.",
-            "_تُعرض الأرقام بعد انتهاء النافذة._",
-            "",
-        ]
+        if unchecked:
+            # "Could not check" is not "a window is open" — a different fact, and
+            # a trader who acts on the wrong one is acting on an unknown.
+            lines += [
+                "⚠️ *يوجد نموذج لكنه محجوب* — تعذّر فحص التقويم.",
+                "_تُعرض الأرقام بعد نجاح الفحص._",
+                "",
+            ]
+        else:
+            lines += [
+                "🚨 *يوجد نموذج لكنه محجوب* — نافذة خبر عالي التأثير.",
+                "_تُعرض الأرقام بعد انتهاء النافذة._",
+                "",
+            ]
     if analysis and analysis.get("market_state"):
         lines += ["*حالة السوق:*", _esc(analysis["market_state"]), ""]
     if analysis and analysis.get("bias"):
@@ -190,7 +235,10 @@ def format_status(plan: dict, analysis: dict | None = None, news: dict | None = 
         lines += [f"• {_esc(str(r))}" for r in plan["rejected"][:5]]
     if news:
         blackout = news.get("blackout") or {}
-        if blackout.get("active") and not withheld:
+        if unchecked and not withheld:
+            # The window is unknown and nothing was withheld — still not calm.
+            lines += ["", "⚠️ *تعذّر فحص التقويم* — لا يمكن الجزم بوجود خبر"]
+        elif blackout.get("active") and not withheld:
             lines += ["", "🚨 *نافذة خبر عالي التأثير*"]
         upcoming = news.get("upcoming") or []
         if upcoming:

@@ -94,9 +94,16 @@ a poor ratio.
 | `macro.py` | FRED CSV + EURUSDT — dollar and real yield as **context** |
 | `window.py` | assembles the four into one `NewsPicture`, with flags |
 
-The blackout gate is the important one: a high-impact window withholds a new
-idea on **every** path — the price card still goes out with the window flagged,
-and the idea follows once the window closes.
+The blackout gate is the important one, and it **fails closed**. Three facts
+about the window are kept distinct, because they call for different answers:
+
+- a high-impact window is **open** — the idea is withheld and the card says so;
+- no window was found on a **read that succeeded** — the idea goes out;
+- the calendar **could not be read** — the idea is withheld anyway, because an
+  unknown window is not a clear one, and the card says the read failed.
+
+The rule holds on **every** path — the price card still goes out with the reason
+flagged, and the idea follows once a read succeeds.
 
 ### `ai/` — the narrative layer, and nothing else
 
@@ -136,8 +143,11 @@ These hold across the codebase and are what the tests defend:
 3. **A number carries its provenance.** Where it survived a failure it carries
    the observation day (`as_of`).
 4. **Degrade, do not crash.** Every network leg falls back and records why.
-5. **The AI is optional.** Every read exists without it.
-6. **Pure standard library.** No runtime dependency, ever (see CONTRIBUTING).
+5. **Fail closed, not open.** When a check cannot run, the guarded action is
+   withheld — an unread calendar withholds an idea just as an open window does.
+   "We could not check" is never treated as "nothing to find".
+6. **The AI is optional.** Every read exists without it.
+7. **Pure standard library.** No runtime dependency, ever (see CONTRIBUTING).
 
 ---
 
