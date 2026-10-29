@@ -155,6 +155,7 @@ docker run -d --name goldbot \
 | `GOLDBOT_AI_DAILY_CAP` | Ceiling on the bot's own AI calls per UTC day (default 30) |
 | `GOLDBOT_ENABLE_*` | Toggle each data provider (`KRAKEN`, `BINANCE`, `GOLDAPI`, `YAHOO`) |
 | `GOLDBOT_ENABLE_ARCHIVE` / `GOLDBOT_ARCHIVE_DIR` | Local archive on/off and where it lives |
+| `GOLDBOT_DATA_DIR` | Root for the state file and the archive. Point it at a mounted volume so a restart keeps the AI cap and the announced news |
 | `GOLDBOT_ENABLE_MACRO` | Macro context (dollar, real yield) on/off. Context only, never a signal |
 | `GOLDBOT_ENABLE_BOT` | Master switch for the bot loop |
 | `PORT` | When set, a health endpoint is served on it (for web hosts) |
@@ -218,6 +219,11 @@ exactly as it does without the module.
 - Health check: `/health`
 - Secrets (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GROQ_API_KEY`) are set
   in the dashboard and never committed
+- A 1 GB disk mounted at `/var/data`, with `GOLDBOT_DATA_DIR` pointed at it, so
+  the state file and the archive survive the restarts Render makes freely. The
+  state carries the per-day AI counter and the set of news already announced:
+  lose it and the cap resets on every deploy, and a restart re-fires the day's
+  alerts.
 
 A `Dockerfile` and `docker-compose.yml` are also included (see
 [Docker](#docker)) for any host that runs containers, or for running it

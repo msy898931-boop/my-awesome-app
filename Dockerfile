@@ -32,7 +32,7 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    GOLDBOT_ARCHIVE_DIR=/data/archive
+    GOLDBOT_DATA_DIR=/data
 
 # A dedicated unprivileged user. The bot only ever reads the market and writes
 # its archive, so it needs no privilege at all, and running as root would give
@@ -49,7 +49,7 @@ RUN pip install --no-cache-dir --no-deps /tmp/*.whl && rm -f /tmp/*.whl
 # The archive lives on a volume so a container restart does not lose the
 # candles the bot has accumulated — the same reasoning as the Render note in
 # the README, but a volume makes it durable instead of merely lucky.
-RUN mkdir -p /data/archive && chown -R goldbot:goldbot /data
+RUN mkdir -p /data && chown -R goldbot:goldbot /data
 VOLUME ["/data"]
 
 USER goldbot

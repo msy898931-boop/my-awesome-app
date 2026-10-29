@@ -74,12 +74,15 @@ class Bot(CommandScreens):
         self,
         settings: Settings,
         pipeline: Pipeline | None = None,
-        state_path: str = "run/bot_state.json",
+        state_path: str | None = None,
         tg: Telegram | None = None,
     ) -> None:
         self.settings = settings
         self.pipeline = pipeline or Pipeline(settings)
-        self.state_path = state_path
+        # The data root decides where state lives, so a host with a persistent
+        # volume keeps the daily AI counter across restarts. An explicit
+        # ``state_path`` still wins, which is what the tests pass.
+        self.state_path = state_path or settings.state_path
         self.tg = tg or Telegram(settings.telegram_token)
         self.chat_id = settings.telegram_chat
         self._last_key: str | None = None
