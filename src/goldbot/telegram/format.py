@@ -104,6 +104,54 @@ def format_price(
     return "\n".join(lines)
 
 
+def format_live_price(live: dict | None) -> str:
+    """The ``/سعر`` card: the price now, from every source, with the spread.
+
+    Cheap on purpose — no bars, no structure, no model — because the question
+    it answers ("where is gold this second?") changes faster than a full read
+    can be produced. It shows *each* source's number rather than one blended
+    figure, so the trader sees the disagreement instead of being handed a
+    false precision. A source that did not answer is named as missing: an
+    absent quote must never read as agreement.
+    """
+    lines = ["💰 *XAUUSD — السعر اللحظي*"]
+    data = live or {}
+    price = data.get("price")
+    if price is None:
+        # Not a price of zero, and not silence: the check ran and nothing
+        # answered. Say so, the same way the news card does.
+        lines.append("")
+        lines.append("⚠️ *تعذّر جلب السعر* — كل المصادر لم تستجب.")
+        lines.append("_جرّب مرة أخرى بعد لحظات._")
+        lines += ["", ADVISORY]
+        return "\n".join(lines)
+
+    lines.append(f"*السعر:* `{price}`")
+    sources = data.get("sources") or 0
+    spread = data.get("spread_pct")
+    if spread is not None:
+        spread_word = "متطابقة" if spread < 0.05 else ("متقاربة" if spread < 0.3 else "متباعدة")
+        lines.append(f"*توافق المصادر:* {sources} مصدر — {spread_word} (فارق {spread}%)")
+    low, high = data.get("low"), data.get("high")
+    if low is not None and high is not None and low != high:
+        lines.append(f"*النطاق:* `{low}` — `{high}`")
+
+    quotes = data.get("quotes") or {}
+    if quotes:
+        lines.append("")
+        lines.append("*حسب المصدر:*")
+        for name, value in sorted(quotes.items(), key=lambda kv: -kv[1]):
+            lines.append(f"• `{name}` — `{value}`")
+
+    stamp = _clock(data.get("time"))
+    if stamp:
+        lines.append("")
+        lines.append(f"🕐 آخر تحديث: `{stamp}` UTC")
+
+    lines += ["", ADVISORY]
+    return "\n".join(lines)
+
+
 def _trade_block(lines: list[str], idea: dict) -> None:
     """The three numbers a trader acts on, when they exist.
 

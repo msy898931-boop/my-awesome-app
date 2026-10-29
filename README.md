@@ -73,6 +73,7 @@ The bot opens with a persistent panel; every action is also available as a
 typed command.
 
 - `/start` or `/help` — the panel and the command list
+- `/سعر` — the live price right now, from every source, with the spread
 - `/تحليل` — the full SMC/ICT read, frame by frame
 - `/صفقة` — the current plan or market state
 - `/أخبار` — calendar and headlines

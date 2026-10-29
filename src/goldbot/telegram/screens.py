@@ -12,7 +12,7 @@ from __future__ import annotations
 from ..config import Settings
 from ..pipeline import Pipeline, Result
 from .client import Telegram, TelegramError
-from .format import format_analysis, format_news, format_plan
+from .format import format_analysis, format_live_price, format_news, format_plan
 from .menus import (
     ALL_TIMEFRAMES,
     HELP,
@@ -46,6 +46,11 @@ _COMMAND_ALIASES = {
     "settings": "settings",
     "menu": "menu",
     "قائمة": "menu",
+    # The live price: the one question that changes every second.
+    "سعر": "price",
+    "السعر": "price",
+    "price": "price",
+    "gold": "price",
     # AYZR's own commands, typed or tapped from its buttons.
     "ayzr": "ayzr:analyse",
     "🤖": "ayzr:analyse",
@@ -106,6 +111,17 @@ class CommandScreens:
                 body = ayzr_handle(data)
             except Exception as exc:  # AYZR must never take the bot down
                 body = f"⚠️ *AYZR:* تعذّر العرض ({type(exc).__name__})."
+            self.tg.send(chat_id, body, keyboard=menu_keyboard())
+            return
+
+        # The live price is the one screen that must be *instant*, so it skips
+        # the pipeline entirely: no bars, no structure, no model, no cache. The
+        # whole read is a handful of spot quotes.
+        if data == "price":
+            if callback_id:
+                self.tg.answer_callback(callback_id)
+            self.tg.typing(chat_id)
+            body = format_live_price(self.pipeline.feed.live_spot())
             self.tg.send(chat_id, body, keyboard=menu_keyboard())
             return
 

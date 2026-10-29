@@ -17,6 +17,7 @@ from goldbot.telegram.format import (
     _when,
     blackout_blocks_idea,
     format_analysis,
+    format_live_price,
     format_plan,
     format_status,
 )
@@ -342,3 +343,50 @@ def test_num_keeps_a_fractional_value():
 
 def test_esc_neutralises_markdown_control_characters():
     assert _esc("a_b*c[d]`e`") == "a\\_b\\*c\\[d\\]\\`e\\`"
+
+
+# ── live price card (/سعر) ──────────────────────────────────────────────
+
+
+def test_live_price_shows_each_source_not_one_blended_number():
+    card = format_live_price(
+        {
+            "price": 4010.0,
+            "sources": 2,
+            "quotes": {"kraken:PAXGUSD": 4010.0, "gold-api:XAU": 4012.0},
+            "low": 4010.0,
+            "high": 4012.0,
+            "spread_pct": 0.05,
+            "time": 0,
+        }
+    )
+    assert "4010.0" in card
+    assert "kraken:PAXGUSD" in card and "gold-api:XAU" in card
+    assert "4012.0" in card
+    assert ADVISORY in card
+
+
+def test_live_price_says_so_when_nothing_answered():
+    """Silence must never render as a price, and never as a reassuring default."""
+    card = format_live_price({"checked": True, "price": None, "quotes": {}, "sources": 0})
+    assert "تعذّر جلب السعر" in card
+    assert "غير متاح" not in card
+
+
+def test_live_price_handles_a_missing_payload():
+    assert "تعذّر" in format_live_price(None)
+
+
+def test_live_price_marks_a_wide_disagreement_between_sources():
+    card = format_live_price(
+        {
+            "price": 4100.0,
+            "sources": 2,
+            "quotes": {"a": 4000.0, "b": 4200.0},
+            "low": 4000.0,
+            "high": 4200.0,
+            "spread_pct": 4.8,
+            "time": 0,
+        }
+    )
+    assert "متباعدة" in card

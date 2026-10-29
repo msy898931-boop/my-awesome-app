@@ -398,6 +398,7 @@ class Bot(CommandScreens):
             self.tg.set_commands(
                 [
                     ("start", "القائمة والمساعدة"),
+                    ("price", "السعر اللحظي الآن"),
                     ("analyse", "قراءة SMC/ICT الكاملة"),
                     ("plan", "آخر صفقة أو حالة السوق"),
                     ("news", "التقويم والعناوين"),

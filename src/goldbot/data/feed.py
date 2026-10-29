@@ -134,13 +134,15 @@ class MarketFeed:
         report.chosen = best.source
         return best, report
 
-    def spot_check(self, series: Series) -> dict | None:
-        """Compare the newest close against keyless spot quotes.
+    def spot_quotes(self) -> dict[str, float]:
+        """Every provider's live spot quote, keyless and cheap.
 
-        Returns ``None`` when no spot source answers, so an offline check is
-        silent rather than a false alarm. When quotes exist, the divergence in
-        percent is reported and a ``trusted`` flag is set: a series whose close
-        is more than 3% from spot is flagged, never silently used.
+        This is the whole cost of the ``/سعر`` button: one number per source,
+        now. It skips the bar fetch, the structure read, and the AI, so a press
+        is fast and free. A provider that stays silent is simply *absent* from
+        the map — the caller names the gap rather than reading a zero as a
+        price, because "no quote" and "gold is worth nothing" are not the same
+        claim.
         """
         quotes: dict[str, float] = {}
         for provider in self.providers:
@@ -149,7 +151,60 @@ class MarketFeed:
             except Exception:
                 price = None
             if price:
-                quotes[provider.name] = price
+                quotes[provider.name] = float(price)
+        return quotes
+
+    def live_spot(self) -> dict:
+        """The live-price read behind the ``/سعر`` button.
+
+        Aggregates every provider's quote into a consensus, and states the
+        disagreement between them. The spread is the honest uncertainty in the
+        number: gold trades on several venues at once, so a single source is a
+        single opinion. When nothing answers, ``checked`` is still ``True`` and
+        ``quotes`` is empty — the caller must say the check failed, never print
+        a reassuring default.
+        """
+        quotes = self.spot_quotes()
+        now = int(time.time())
+        if not quotes:
+            return {
+                "checked": True,
+                "quotes": {},
+                "price": None,
+                "low": None,
+                "high": None,
+                "spread_pct": None,
+                "sources": 0,
+                "time": now,
+            }
+        prices = sorted(quotes.values())
+        middle = len(prices) // 2
+        # Median, not mean: one venue quoting a fat contango (Yahoo's GC=F) must
+        # not drag the headline number, which is what the trader reads first.
+        consensus = (
+            prices[middle] if len(prices) % 2 else (prices[middle - 1] + prices[middle]) / 2.0
+        )
+        spread = (prices[-1] - prices[0]) / consensus * 100.0 if consensus else None
+        return {
+            "checked": True,
+            "quotes": quotes,
+            "price": round(consensus, 2),
+            "low": round(prices[0], 2),
+            "high": round(prices[-1], 2),
+            "spread_pct": round(spread, 3) if spread is not None else None,
+            "sources": len(quotes),
+            "time": now,
+        }
+
+    def spot_check(self, series: Series) -> dict | None:
+        """Compare the newest close against keyless spot quotes.
+
+        Returns ``None`` when no spot source answers, so an offline check is
+        silent rather than a false alarm. When quotes exist, the divergence in
+        percent is reported and a ``trusted`` flag is set: a series whose close
+        is more than 3% from spot is flagged, never silently used.
+        """
+        quotes = self.spot_quotes()
         if not quotes or not series.bars:
             return None
         close = series.bars[-1].close

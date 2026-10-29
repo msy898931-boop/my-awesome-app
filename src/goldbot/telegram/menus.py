@@ -11,9 +11,10 @@ from __future__ import annotations
 HELP = (
     "🥇 *بوت الذهب — SMC/ICT*\n\n"
     "⌨️ *لوحة التحكم أسفل الشاشة* — الأزرار ثابتة هناك، اضغط أي زر في أي وقت:\n"
-    "📊 التحليل · 🎯 الصفقة · 📰 الأخبار · 📈 الحالة · 🤖 AYZR · 📒 دفتر AYZR · "
-    "🔄 تحديث · ⚙️ الإعدادات\n\n"
+    "💰 السعر · 📊 التحليل · 🎯 الصفقة · 📈 الحالة · 📰 الأخبار · 🤖 AYZR · "
+    "📒 دفتر AYZR · 🔄 تحديث · ⚙️ الإعدادات\n\n"
     "أو اكتب الأمر:\n"
+    "/price — السعر اللحظي الآن من كل المصادر\n"
     "/analyse — قراءة SMC/ICT الكاملة لكل فريم\n"
     "/plan — آخر صفقة أو حالة السوق الآن\n"
     "/news — التقويم الاقتصادي والعناوين\n"
@@ -47,9 +48,10 @@ SENSITIVITY: tuple[tuple[str, str, float], ...] = (
 # own budget and its own journal, reached only through this namespace.
 MENU: list[list[tuple[str, str]]] = [
     [("📊 التحليل الكامل", "analyse"), ("🎯 الصفقة", "plan")],
-    [("📰 الأخبار", "news"), ("📈 حالة السوق", "status")],
+    [("💰 السعر اللحظي", "price"), ("📈 حالة السوق", "status")],
+    [("📰 الأخبار", "news"), ("🔄 تحديث", "refresh")],
     [("🤖 تحليل AYZR", "ayzr:analyse"), ("📒 دفتر AYZR", "ayzr:report")],
-    [("🔄 تحديث", "refresh"), ("⚙️ الإعدادات", "settings")],
+    [("⚙️ الإعدادات", "settings")],
 ]
 
 # The persistent panel pinned to the bottom of the chat. A *reply* keyboard,
@@ -58,10 +60,11 @@ MENU: list[list[tuple[str, str]]] = [
 # leading emoji is what ``_respond`` maps back to a command, so this list and
 # MENU must keep the same emoji heads.
 REPLY_MENU: list[list[str]] = [
-    ["📊 التحليل", "🎯 الصفقة"],
-    ["📰 الأخبار", "📈 الحالة"],
+    ["💰 السعر", "📊 التحليل"],
+    ["🎯 الصفقة", "📈 الحالة"],
+    ["📰 الأخبار", "🔄 تحديث"],
     ["🤖 AYZR", "📒 دفتر AYZR"],
-    ["🔄 تحديث", "⚙️ الإعدادات"],
+    ["⚙️ الإعدادات"],
 ]
 
 PANEL_HINT = "⌨️ لوحة التحكم أسفل الشاشة — اضغط أي زر في أي وقت."

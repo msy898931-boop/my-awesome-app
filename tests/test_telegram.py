@@ -91,13 +91,15 @@ def _bot(recorder, state_path=None):
 
 
 def test_menu_keyboard_shape_and_ascii_data():
-    from goldbot.telegram.bot import menu_keyboard
+    from goldbot.telegram.bot import MENU, menu_keyboard
 
     kb = menu_keyboard()
     rows = kb["inline_keyboard"]
-    assert len(rows) == 4
+    # Derived from MENU, not hard-coded: adding a button must not silently
+    # leave this test asserting a stale count.
+    assert len(rows) == len(MENU)
     buttons = [b for row in rows for b in row]
-    assert len(buttons) == 8
+    assert len(buttons) == sum(len(row) for row in MENU)
     for button in buttons:
         # Telegram caps callback_data at 64 bytes and requires the label to
         # carry the Arabic, so the data itself stays short and ASCII.
@@ -116,6 +118,54 @@ def test_pressing_a_button_answers_then_sends_with_keyboard():
     assert chat_id == "999"
     assert text
     assert keyboard is not None and "inline_keyboard" in keyboard
+
+
+def test_the_price_button_reads_spot_without_running_the_pipeline():
+    """The whole point of the button: instant, and no model or bars fetched."""
+    rec = _Recorder()
+    bot = _bot(rec)
+    calls: list[str] = []
+
+    class _Feed:
+        def live_spot(self):
+            calls.append("live_spot")
+            return {"price": 4012.5, "sources": 2, "quotes": {"kraken": 4012.5}, "time": 0}
+
+    class _Pipeline:
+        feed = _Feed()
+
+        def run(self, **kwargs):  # pragma: no cover - must never be reached
+            calls.append("pipeline.run")
+            raise AssertionError("the price button must not run the pipeline")
+
+    bot.pipeline = _Pipeline()
+    bot._answer("999", "price")
+
+    assert calls == ["live_spot"]
+    _, text, keyboard = rec.sent[0]
+    assert "4012.5" in text
+    assert keyboard is not None
+
+
+def test_the_price_button_is_reachable_by_typed_arabic():
+    """`/سعر` and the panel's 💰 button both resolve to the same screen."""
+    from goldbot.telegram.bot import resolve_data
+
+    # The 💰 head of the panel label is what a tap sends back as text.
+    assert resolve_data("💰") == "price"
+    assert resolve_data("price") == "price"
+
+
+def test_a_typed_arabic_price_command_reaches_the_price_screen():
+    rec = _Recorder()
+    bot = _bot(rec)
+    seen: list[str] = []
+    bot.pipeline.feed.live_spot = lambda: (  # type: ignore[method-assign]
+        seen.append("hit") or {"price": 4000.0, "sources": 1, "quotes": {}, "time": 0}
+    )
+    bot._respond("999", "/سعر")
+    assert seen == ["hit"]
+    assert "4000.0" in rec.sent[0][1]
 
 
 def test_every_menu_button_renders_a_card_with_a_keyboard():
@@ -531,14 +581,14 @@ def test_get_updates_always_names_allowed_updates(monkeypatch):
 
 
 def test_reply_panel_is_a_persistent_bottom_keyboard():
-    from goldbot.telegram.bot import reply_keyboard
+    from goldbot.telegram.bot import REPLY_MENU, reply_keyboard
 
     kb = reply_keyboard()
     assert "keyboard" in kb and "inline_keyboard" not in kb
     assert kb["is_persistent"] is True
     assert kb["resize_keyboard"] is True
     labels = [b["text"] for row in kb["keyboard"] for b in row]
-    assert len(labels) == 8
+    assert len(labels) == sum(len(row) for row in REPLY_MENU)
 
 
 def test_every_panel_button_maps_to_a_known_command():
@@ -546,6 +596,7 @@ def test_every_panel_button_maps_to_a_known_command():
     from goldbot.telegram.bot import REPLY_MENU, resolve_data
 
     known = {
+        "price",
         "analyse",
         "plan",
         "news",

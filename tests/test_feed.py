@@ -201,6 +201,68 @@ def test_spot_check_returns_none_for_an_empty_series():
     assert feed.spot_check(empty) is None
 
 
+# ── live spot (the /سعر button) ─────────────────────────────────────────
+
+
+def test_live_spot_reports_every_source_and_the_spread():
+    feed = MarketFeed(
+        [
+            _Stub("a", spot=4000.0),
+            _Stub("b", spot=4010.0),
+            _Stub("c", spot=4020.0),
+        ]
+    )
+    out = feed.live_spot()
+    assert out["checked"] is True
+    assert out["sources"] == 3
+    assert out["quotes"] == {"a": 4000.0, "b": 4010.0, "c": 4020.0}
+    assert out["low"] == 4000.0 and out["high"] == 4020.0
+    assert out["spread_pct"] == 0.499  # 20 / 4010 * 100
+
+
+def test_live_spot_uses_the_median_so_one_outlier_cannot_move_it():
+    """Yahoo's futures quote carries a contango premium; it must not lead."""
+    feed = MarketFeed(
+        [_Stub("a", spot=4000.0), _Stub("b", spot=4001.0), _Stub("yahoo", spot=4200.0)]
+    )
+    out = feed.live_spot()
+    assert out["price"] == 4001.0
+    assert out["high"] == 4200.0
+
+
+def test_live_spot_averages_the_middle_two_for_an_even_count():
+    feed = MarketFeed([_Stub("a", spot=4000.0), _Stub("b", spot=4010.0)])
+    out = feed.live_spot()
+    assert out["price"] == 4005.0
+
+
+def test_live_spot_says_the_check_ran_when_nothing_answers():
+    """An empty read is 'we looked and found nothing', never a quiet zero."""
+    feed = MarketFeed([_Stub("down", spot=None)])
+    out = feed.live_spot()
+    assert out["checked"] is True
+    assert out["price"] is None
+    assert out["sources"] == 0
+    assert out["quotes"] == {}
+
+
+def test_live_spot_skips_a_provider_that_raises():
+    class _Boom(_Stub):
+        def spot(self):
+            raise RuntimeError("spot endpoint died")
+
+    feed = MarketFeed([_Boom("boom"), _Stub("good", spot=4000.0)])
+    out = feed.live_spot()
+    assert out["quotes"] == {"good": 4000.0}
+    assert out["price"] == 4000.0
+
+
+def test_spot_quotes_is_the_shared_seam_for_both_reads():
+    """spot_check and live_spot must agree on which sources answered."""
+    feed = MarketFeed([_Stub("a", spot=4000.0), _Stub("b", spot=None)])
+    assert feed.spot_quotes() == {"a": 4000.0}
+
+
 # ── staleness ───────────────────────────────────────────────────────────
 
 
