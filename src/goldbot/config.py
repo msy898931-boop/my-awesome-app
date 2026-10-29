@@ -59,6 +59,14 @@ def _float(name: str, default: float) -> float:
         return default
 
 
+def _default_archive_dir() -> str:
+    """The candle archive, under the shared data root when one is configured."""
+    data_dir = os.environ.get("GOLDBOT_DATA_DIR", "").strip()
+    if data_dir:
+        return str(Path(data_dir) / "archive")
+    return ".goldbot/archive"
+
+
 def _timeframes() -> tuple[str, ...]:
     """The structural frames, in canonical order, filtered by the allow-list."""
     canonical = ("M1", "M5", "M15", "M30", "H1", "H4", "D1")
@@ -138,9 +146,26 @@ class Settings:
     # back about a week of intraday, so this is the only way to build a sample
     # worth backtesting on.
     enable_archive: bool = field(default_factory=lambda: _flag("GOLDBOT_ENABLE_ARCHIVE", True))
+    # A single root for everything that must outlive the process: the bot's
+    # state file and the candle archive. On a host with an ephemeral filesystem
+    # this is the mount point that survives a restart — and it matters, because
+    # the state carries the per-day AI counter: lose it and the cap resets on
+    # every deploy, which is exactly how the free tier gets drained.
+    # Empty means "use the historical relative paths", so nothing changes
+    # locally or in a container that has no persistent volume.
+    data_dir: str = field(default_factory=lambda: os.environ.get("GOLDBOT_DATA_DIR", "").strip())
     archive_dir: Path = field(
-        default_factory=lambda: Path(os.environ.get("GOLDBOT_ARCHIVE_DIR", ".goldbot/archive"))
+        default_factory=lambda: Path(
+            os.environ.get("GOLDBOT_ARCHIVE_DIR") or _default_archive_dir()
+        )
     )
+
+    @property
+    def state_path(self) -> str:
+        """Where the bot persists its state, under the data root when one is set."""
+        if self.data_dir:
+            return str(Path(self.data_dir) / "bot_state.json")
+        return "run/bot_state.json"
 
     @property
     def ai_enabled(self) -> bool:

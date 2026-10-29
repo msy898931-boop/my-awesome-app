@@ -124,3 +124,77 @@ def test_settings_read_the_environment(monkeypatch):
 def test_ai_is_disabled_without_a_key(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "")
     assert Settings().ai_enabled is False
+
+
+# ── the data root: what must outlive the process ─────────────────────────
+
+
+def test_no_data_dir_keeps_the_historical_relative_paths(monkeypatch):
+    """A local run or a plain container must behave exactly as before."""
+    monkeypatch.delenv("GOLDBOT_DATA_DIR", raising=False)
+    monkeypatch.delenv("GOLDBOT_ARCHIVE_DIR", raising=False)
+    s = Settings()
+    assert s.state_path == "run/bot_state.json"
+    assert str(s.archive_dir) == ".goldbot/archive"
+
+
+def test_a_data_dir_puts_both_the_state_and_the_archive_under_it(monkeypatch):
+    """One root for everything durable, so a single mount persists it all."""
+    monkeypatch.setenv("GOLDBOT_DATA_DIR", "/var/data")
+    monkeypatch.delenv("GOLDBOT_ARCHIVE_DIR", raising=False)
+    s = Settings()
+    assert s.state_path == "/var/data/bot_state.json"
+    assert str(s.archive_dir) == "/var/data/archive"
+
+
+def test_an_explicit_archive_dir_still_wins_over_the_data_root(monkeypatch):
+    """The specific knob beats the general one, as a reader would expect."""
+    monkeypatch.setenv("GOLDBOT_DATA_DIR", "/var/data")
+    monkeypatch.setenv("GOLDBOT_ARCHIVE_DIR", "/mnt/candles")
+    s = Settings()
+    assert str(s.archive_dir) == "/mnt/candles"
+    assert s.state_path == "/var/data/bot_state.json"
+
+
+def test_a_blank_data_dir_is_treated_as_unset(monkeypatch):
+    """A stray empty variable must not put the state at '/bot_state.json'."""
+    monkeypatch.setenv("GOLDBOT_DATA_DIR", "   ")
+    monkeypatch.delenv("GOLDBOT_ARCHIVE_DIR", raising=False)
+    s = Settings()
+    assert s.state_path == "run/bot_state.json"
+    assert str(s.archive_dir) == ".goldbot/archive"
+
+
+def test_the_bot_takes_its_state_path_from_the_settings(monkeypatch, tmp_path):
+    """The data root must reach the bot without the caller wiring it by hand."""
+    from goldbot.telegram.bot import Bot
+
+    monkeypatch.setenv("GOLDBOT_DATA_DIR", str(tmp_path))
+    bot = Bot(Settings(telegram_chat="1"))
+    assert bot.state_path == str(tmp_path / "bot_state.json")
+
+
+def test_an_explicit_state_path_still_wins(monkeypatch, tmp_path):
+    """The tests pass their own path; that must keep working."""
+    from goldbot.telegram.bot import Bot
+
+    monkeypatch.setenv("GOLDBOT_DATA_DIR", str(tmp_path / "ignored"))
+    explicit = str(tmp_path / "custom.json")
+    bot = Bot(Settings(telegram_chat="1"), state_path=explicit)
+    assert bot.state_path == explicit
+
+
+def test_the_daily_ai_counter_survives_a_restart_under_a_data_root(monkeypatch, tmp_path):
+    """The whole point: a restart must not hand the bot a fresh day's budget."""
+    import time
+
+    from goldbot.telegram.bot import Bot
+
+    monkeypatch.setenv("GOLDBOT_DATA_DIR", str(tmp_path))
+    first = Bot(Settings(telegram_chat="1"))
+    first._ai_day = time.strftime("%Y-%m-%d", time.gmtime())
+    first._ai_calls = 7
+    first._save()
+
+    reborn = Bot(Settings(telegram_chat="1"))
+    assert reborn._ai_today() == 7, "the cap would reset on every deploy without this"

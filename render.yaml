@@ -8,9 +8,21 @@ services:
     startCommand: python -m goldbot.cli bot
     healthCheckPath: /health
     autoDeploy: true
+    # A disk, so the bot's state outlives the process. Render restarts a free
+    # instance freely, and without this every restart forgets the per-day AI
+    # counter (the cap then resets and the free tier is spent twice over), the
+    # events already announced (a restart re-fires the day's alerts), and the
+    # accumulated candles. Free plan supports one disk per service.
+    disk:
+      name: goldbot-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.6"
+      # Everything durable lives under the mount: state file and archive.
+      - key: GOLDBOT_DATA_DIR
+        value: /var/data
       - key: GOLDBOT_ENABLE_YAHOO
         value: "0"
       - key: GOLDBOT_ENABLE_BINANCE

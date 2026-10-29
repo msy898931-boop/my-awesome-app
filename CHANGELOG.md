@@ -7,6 +7,17 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **`GOLDBOT_DATA_DIR`, a single root for everything that must outlive the
+  process** — the bot's state file and the candle archive. On a host with an
+  ephemeral filesystem (Render's free plan among them) a restart used to reset
+  the per-day AI counter, so the cap that exists to protect a metered free tier
+  reset on every deploy, and the announced-news set reset with it, so a restart
+  re-fired the day's alerts. `render.yaml` now mounts a 1 GB disk at
+  `/var/data` and points the root at it; the Dockerfile uses the same variable
+  so the state is durable there too. Empty keeps the historical relative paths,
+  so nothing changes locally. An explicit `GOLDBOT_ARCHIVE_DIR` still wins over
+  the root, as a reader would expect.
+
 - **The bot now works unprompted.** Two things it used to make you ask for now
   arrive on their own. A **news heads-up** fires inside a lead window
   (`GOLDBOT_NEWS_ALERT_MINUTES`, default 30) before a high-impact release, with
