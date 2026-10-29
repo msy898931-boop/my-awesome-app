@@ -94,13 +94,25 @@ a poor ratio.
 | `macro.py` | FRED CSV + EURUSDT — dollar and real yield as **context** |
 | `window.py` | assembles the four into one `NewsPicture`, with flags |
 
-The blackout gate is the important one, and it **fails closed**. Three facts
-about the window are kept distinct, because they call for different answers:
+The blackout gate is the important one, and it **fails closed** — but on the
+right fact. Three facts about the window are kept distinct, because they call
+for different answers:
 
 - a high-impact window is **open** — the idea is withheld and the card says so;
-- no window was found on a **read that succeeded** — the idea goes out;
-- the calendar **could not be read** — the idea is withheld anyway, because an
-  unknown window is not a clear one, and the card says the read failed.
+- no window was found on a read we **hold** — the idea goes out;
+- the calendar **could not be read at all** — the idea is withheld anyway,
+  because an unknown window is not a clear one, and the card says the read
+  failed.
+
+"A read we hold" is the key refinement. The source rate-limits by IP, so a 429
+is routine, and the last good read is **saved to disk** and restored on the next
+start. A blocked fetch therefore degrades to a *stale but usable* calendar — the
+window is known, just not this minute's — rather than to "unknown", which would
+withhold every idea. The fallback is bounded: a saved read is refused once it is
+older than `MAX_STALE` or once every event in it is already in the past, so it
+can only ever describe the week we are actually in. The `usable` flag carries
+this distinction into the digest: `checked=False` (and therefore withholding) is
+now reserved for the case where there is genuinely nothing to reason about.
 
 The rule holds on **every** path — the price card still goes out with the reason
 flagged, and the idea follows once a read succeeds.
@@ -148,7 +160,10 @@ These hold across the codebase and are what the tests defend:
 4. **Degrade, do not crash.** Every network leg falls back and records why.
 5. **Fail closed, not open.** When a check cannot run, the guarded action is
    withheld — an unread calendar withholds an idea just as an open window does.
-   "We could not check" is never treated as "nothing to find".
+   "We could not check" is never treated as "nothing to find". The one nuance is
+   a *saved* read: a blocked fetch falls back to the last good calendar (bounded
+   by age and by holding an event still ahead), which is a known window, not an
+   unknown one — so it does not withhold.
 6. **The AI is optional.** Every read exists without it, and the bot's own use
    of it is capped per day so a metered tier cannot be spent into a silent,
    broken-looking state.

@@ -10,10 +10,13 @@ which baseline it used.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..net import open_url
 
@@ -25,6 +28,15 @@ USER_AGENT = "gold-smc-ict-bot/0.1"
 # permanent. ``RETRY_AFTER_DEFAULT`` covers a 429 that omits the header.
 NEGATIVE_TTL = 300.0
 RETRY_AFTER_DEFAULT = 120.0
+
+# How long a saved read may stand in for a blocked source. The feed is the
+# *current week* and the source rate-limits by IP, so one blocked fetch used to
+# cost every card until the next success — and because the blackout fails
+# closed, that meant no ideas at all. A saved read is a fallback, not an
+# archive: it is trusted only while it is recent *and* still holds an event
+# ahead of now. Past that it describes a week that has already happened, which
+# is not an answer, and the window goes back to being unknown.
+MAX_STALE = 3 * 24 * 3600.0
 
 # Which way a higher print leans for the dollar, per indicator. Jobless claims
 # invert it: more claims is a weaker labour market, hence a weaker dollar.
@@ -124,6 +136,40 @@ class Event:
             )
         return out
 
+    def as_dict(self) -> dict:
+        """The event as plain data, for the on-disk store."""
+        return {
+            "title": self.title,
+            "country": self.country,
+            "impact": self.impact,
+            "time": self.time,
+            "forecast": self.forecast,
+            "previous": self.previous,
+            "actual": self.actual,
+            "unit": self.unit,
+        }
+
+    @classmethod
+    def from_dict(cls, row: dict) -> Event | None:
+        """Rebuild an event from the store, or ``None`` when it is unusable.
+
+        A malformed row is dropped rather than repaired: a calendar that cannot
+        be trusted is worse than one that is honestly absent.
+        """
+        try:
+            return cls(
+                title=str(row["title"]).strip(),
+                country=str(row["country"]).strip(),
+                impact=str(row["impact"]).strip().lower(),
+                time=int(row["time"]),
+                forecast=_to_float(row.get("forecast")),
+                previous=_to_float(row.get("previous")),
+                actual=_to_float(row.get("actual")),
+                unit=str(row.get("unit") or ""),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
 
 def _higher_is_stronger(title: str) -> bool:
     low = title.lower()
@@ -155,6 +201,78 @@ def _to_epoch(raw) -> int | None:
         return None
 
 
+class CalendarStore:
+    """The last good calendar read, on disk, so a blocked fetch is survivable.
+
+    The source rate-limits by IP and the bot runs on a shared host, so a 429 is
+    routine rather than exceptional. Without a saved read, one blocked fetch
+    meant "could not check the calendar", which the blackout correctly turns
+    into "withhold the idea" — so a transient block on the feed produced no
+    trade ideas at all, which is the opposite of the intent. The saved read lets
+    a blocked fetch degrade to a *stale but usable* calendar instead.
+
+    It is deliberately not an archive: :meth:`load` refuses a read that is too
+    old or that no longer has an event ahead of it, so the fallback can only
+    ever describe the week we are actually in. Past that, "we could not check"
+    is the truthful answer and the window stays unknown.
+
+    Plain JSON, written atomically, safe to delete: a missing store simply means
+    no fallback, which is exactly the old behaviour.
+    """
+
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+
+    def save(self, events: list[Event], now: float | None = None) -> None:
+        """Persist a good read. Best-effort: a store that cannot be written is
+        not worth failing a card over."""
+        stamp = int(now if now is not None else time.time())
+        payload = json.dumps(
+            {"saved_at": stamp, "events": [e.as_dict() for e in events]},
+            ensure_ascii=False,
+        )
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(payload)
+                os.replace(tmp, self.path)
+            except OSError:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
+        except OSError:
+            pass
+
+    def load(self, now: float | None = None) -> list[Event]:
+        """The saved read, if it is still fit to stand in for a live one.
+
+        Empty when there is no store, it cannot be read, it is older than
+        :data:`MAX_STALE`, or every event it holds is already in the past — the
+        last of these is what stops a fallback from serving last week's schedule
+        as if it were this week's.
+        """
+        now = now if now is not None else time.time()
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        if not isinstance(raw, dict):
+            return []
+        try:
+            saved_at = float(raw.get("saved_at") or 0)
+        except (TypeError, ValueError):
+            return []
+        if saved_at <= 0 or now - saved_at > MAX_STALE:
+            return []
+        events = [e for e in (Event.from_dict(r) for r in raw.get("events") or []) if e]
+        if not any(e.time >= now for e in events):
+            # The saved week is behind us; it cannot say what is coming.
+            return []
+        return events
+
+
 class CalendarFeed:
     """Fetches the week's calendar, best-effort.
 
@@ -166,13 +284,27 @@ class CalendarFeed:
     the previous good read (marked ``stale``) instead of dropping the calendar.
     """
 
-    def __init__(self, url: str = FEED_URL, timeout: float = 15.0) -> None:
+    def __init__(
+        self,
+        url: str = FEED_URL,
+        timeout: float = 15.0,
+        store: CalendarStore | None = None,
+    ) -> None:
         self.url = url
         self.timeout = timeout
+        self.store = store
         self._cache: tuple[float, list[Event]] = (0.0, [])
         self._ok = False
         self._error = ""
         self._retry_at = 0.0
+        if store is not None:
+            # A saved read is the starting point, so a process that begins life
+            # behind a 429 still has a calendar to reason about. The cache stamp
+            # is left at 0 so the first ``events()`` still attempts a live fetch:
+            # the saved read is a fallback, never a reason to skip the source.
+            # It is not a successful fetch either — ``ok`` stays False and
+            # ``stale`` turns True, so the cards still say the live read failed.
+            self._cache = (0.0, store.load())
 
     @property
     def ok(self) -> bool:
@@ -189,6 +321,17 @@ class CalendarFeed:
         """Serving an older read because the newest attempt failed."""
         return not self._ok and bool(self._cache[1])
 
+    @property
+    def usable(self) -> bool:
+        """Whether the events in hand can be reasoned about at all.
+
+        True after any successful fetch, and also when a saved read is standing
+        in for one. This is the distinction the blackout cares about: a stale
+        read is *usable* (the window is known, if perhaps out of date) whereas no
+        read at all is not, and only the latter should withhold an idea.
+        """
+        return self._ok or bool(self._cache[1])
+
     def events(self, ttl: float = 900.0) -> list[Event]:
         now = time.time()
         if now - self._cache[0] < ttl and self._cache[1]:
@@ -201,9 +344,14 @@ class CalendarFeed:
             # "too many requests" is what keeps it saying that.
             self._retry_at = max(self._retry_at, now + NEGATIVE_TTL)
             return self._cache[1]
-        self._cache = (now, [e for e in (_parse(r) for r in rows) if e is not None])
+        events = [e for e in (_parse(r) for r in rows) if e is not None]
+        self._cache = (now, events)
         self._ok = True
         self._error = ""
+        if self.store is not None:
+            # Save the raw week, not just the high-impact subset: the digest
+            # also renders upcoming and released events.
+            self.store.save(events, now)
         return self._cache[1]
 
     def _fetch(self) -> tuple[list[dict], str]:

@@ -7,6 +7,22 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **A rate-limited calendar silently withheld every trade idea.** The economic
+  calendar source (`nfs.faireconomy.media`) rate-limits by IP, and the bot runs
+  on a shared host, so a 429 was routine rather than exceptional. The blackout
+  gate fails closed on an unread calendar — correct, since an unknown window is
+  not a clear one — but with no fallback a *transient* block became "could not
+  check", which suppressed every idea until the next successful fetch. On a
+  restart the read was lost entirely, so the bot spent most of its life unable
+  to show a setup. The last good read is now saved to disk
+  (`GOLDBOT_DATA_DIR/calendar.json`) and restored on start, so a blocked fetch
+  degrades to a *stale but usable* calendar: the window is known, and the idea
+  goes out, flagged as based on saved data. The fallback is bounded — refused
+  once older than `MAX_STALE` or once every event in it is in the past — so it
+  can only ever describe the current week. `checked=False` and the resulting
+  withholding are now reserved for the case where there is genuinely nothing to
+  reason about. Found by running `python -m goldbot.cli card` live and reading
+  the reason it printed.
 - **The AI layer was effectively disabled in production.** Two faults stacked:
   the reply budget defaulted to 3000 tokens, which a reasoning model spends on
   its scratchpad before emitting anything, so `openai/gpt-oss-20b` returned a
