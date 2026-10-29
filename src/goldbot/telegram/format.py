@@ -8,6 +8,8 @@ carries the advisory note.
 
 from __future__ import annotations
 
+import time
+
 ADVISORY = "⚠️ _تحليل استشاري فقط — ليس نصيحة مالية، والبوت لا ينفّذ أي صفقة._"
 
 # Stated on every news card so the mechanical lean is never mistaken for a
@@ -39,14 +41,28 @@ def _esc(text: str) -> str:
     return text
 
 
-def format_price(spot: dict | None, plan: dict | None = None, news: dict | None = None) -> str:
-    """The automatic push: live price, direction, and the next release.
+def format_price(
+    spot: dict | None,
+    plan: dict | None = None,
+    news: dict | None = None,
+    withheld: bool = False,
+    analysis: dict | None = None,
+) -> str:
+    """The automatic push: live price, the trade, the read, and the next release.
 
-    Deliberately small, and deliberately free. Everything here is deterministic,
-    so an automatic message costs no model tokens at all — the AI prose is only
-    produced when the trader asks for the full card. The price is the one thing
-    worth pushing unprompted, because it changes on every read while the plan
-    behind it rarely does.
+    Everything here is deterministic except the optional ``analysis`` prose, so a
+    push costs no model tokens of its own — the AI is asked only when an idea is
+    actually due, and its reply is handed in. The price is the one thing worth
+    pushing unprompted, because it changes on every read while the plan behind it
+    rarely does.
+
+    When a plan is present the *numbers* go out with it: a direction without an
+    entry, a stop and a target is not a trade a trader can act on, and pushing
+    one was the difference between a bot that looks busy and a bot that is
+    useful. ``withheld`` is passed by the caller because the caller is what
+    stripped the plan: this function cannot tell "an idea was withheld" from
+    "there was no idea", and saying the first when the second is true would be
+    its own small lie.
     """
     lines = ["🥇 *XAUUSD*"]
     price = (spot or {}).get("close")
@@ -61,10 +77,18 @@ def format_price(spot: dict | None, plan: dict | None = None, news: dict | None 
         lines.append(f"*الاتجاه:* {DIR_AR.get(direction, direction)}")
         if idea.get("setup"):
             lines.append(f"*النموذج:* {_esc(str(idea['setup']))}")
+        _trade_block(lines, idea)
+        if analysis:
+            _analysis_block(lines, analysis)
 
     wire = news or {}
     upcoming = wire.get("upcoming") or []
-    if (wire.get("blackout") or {}).get("active"):
+    if calendar_unchecked(news):
+        # Not "a window is open" — that is a different claim. The read failed, so
+        # the window is unknown; if an idea was withheld, say that is why.
+        note = " — حُجبت الفكرة احتياطاً" if withheld else ""
+        lines.append(f"⚠️ *تعذّر فحص التقويم{note}*")
+    elif (wire.get("blackout") or {}).get("active"):
         lines.append("🚨 *نافذة خبر عالي التأثير الآن*")
     elif upcoming:
         nxt = upcoming[0]
@@ -74,6 +98,56 @@ def format_price(spot: dict | None, plan: dict | None = None, news: dict | None 
     return "\n".join(lines)
 
 
+def _trade_block(lines: list[str], idea: dict) -> None:
+    """The three numbers a trader acts on, when they exist.
+
+    Written only when entry, stop and target are all present: a partial set is
+    worse than none, because a stop without a target invites a reader to fill in
+    the blank themselves.
+    """
+    entry, stop, target = idea.get("entry"), idea.get("stop"), idea.get("target")
+    if entry is None or stop is None or target is None:
+        return
+    lines.append(f"*الدخول:* `{_num(entry)}`")
+    lines.append(f"*الوقف:* `{_num(stop)}`")
+    lines.append(f"*الهدف:* `{_num(target)}`")
+    if idea.get("rr"):
+        lines.append(f"*المخاطرة/المكافأة:* `1:{idea['rr']}`")
+
+
+def _analysis_block(lines: list[str], analysis: dict) -> None:
+    """The model's prose, and only when it is actually the model's.
+
+    A fallback read has no confidence and must not be dressed as a probability,
+    so the confidence line is emitted only when it is a real number. The
+    reasoning is the point of asking: it is what turns a set of levels into a
+    decision a trader can weigh.
+    """
+    reasoning = str(analysis.get("reasoning") or "").strip()
+    confidence = analysis.get("confidence")
+    if not reasoning and not confidence:
+        return
+    if confidence:
+        lines.append(f"*ثقة التقدير:* `{round(float(confidence) * 100)}%`")
+    if reasoning:
+        lines += ["", "*الشرح:*", _esc(reasoning)]
+
+
+def calendar_unchecked(news: dict | None) -> bool:
+    """Whether the calendar could not be read, so the window is unknown.
+
+    ``digest`` sets ``checked=False`` when the fetch failed and forces
+    ``active=False``, because an unread window is not an *open* one. But an
+    unknown window is not a *clear* one either, and reading the forced ``False``
+    as permission is how a rate-limited feed would authorise an idea the rule
+    exists to withhold. The distinction is carried in the data so a card can say
+    which of the three facts it has: a window is open, no window was found, or
+    the window could not be read.
+    """
+    blackout = (news or {}).get("blackout") or {}
+    return blackout.get("checked") is False and not blackout.get("active")
+
+
 def blackout_blocks_idea(news: dict | None) -> bool:
     """Whether the stated rule withholds a *new* idea right now.
 
@@ -81,8 +155,13 @@ def blackout_blocks_idea(news: dict | None) -> bool:
     for — so the rule cannot be honoured on one and bypassed by a button on the
     other. The blackout is a stated rule, and a stated rule with an exception is
     not a rule.
+
+    It fails **closed**: an unread calendar withholds the idea exactly as an open
+    window does. The two are different facts and the cards name which it is, but
+    the safe answer to "we could not check" is to withhold, never to proceed.
     """
-    return bool((news or {}).get("blackout", {}).get("active"))
+    blackout = (news or {}).get("blackout") or {}
+    return bool(blackout.get("active")) or calendar_unchecked(news)
 
 
 def macro_lines(news: dict | None, direction: str = "none") -> list[str]:
@@ -174,13 +253,23 @@ def format_status(plan: dict, analysis: dict | None = None, news: dict | None = 
     which is a different claim about the world.
     """
     withheld = blackout_blocks_idea(news) and plan.get("direction") in {"buy", "sell"}
+    unchecked = calendar_unchecked(news)
     lines = ["🥇 *XAUUSD — لا توجد صفقة الآن*", ""]
     if withheld:
-        lines += [
-            "🚨 *يوجد نموذج لكنه محجوب* — نافذة خبر عالي التأثير.",
-            "_تُعرض الأرقام بعد انتهاء النافذة._",
-            "",
-        ]
+        if unchecked:
+            # "Could not check" is not "a window is open" — a different fact, and
+            # a trader who acts on the wrong one is acting on an unknown.
+            lines += [
+                "⚠️ *يوجد نموذج لكنه محجوب* — تعذّر فحص التقويم.",
+                "_تُعرض الأرقام بعد نجاح الفحص._",
+                "",
+            ]
+        else:
+            lines += [
+                "🚨 *يوجد نموذج لكنه محجوب* — نافذة خبر عالي التأثير.",
+                "_تُعرض الأرقام بعد انتهاء النافذة._",
+                "",
+            ]
     if analysis and analysis.get("market_state"):
         lines += ["*حالة السوق:*", _esc(analysis["market_state"]), ""]
     if analysis and analysis.get("bias"):
@@ -190,7 +279,10 @@ def format_status(plan: dict, analysis: dict | None = None, news: dict | None = 
         lines += [f"• {_esc(str(r))}" for r in plan["rejected"][:5]]
     if news:
         blackout = news.get("blackout") or {}
-        if blackout.get("active") and not withheld:
+        if unchecked and not withheld:
+            # The window is unknown and nothing was withheld — still not calm.
+            lines += ["", "⚠️ *تعذّر فحص التقويم* — لا يمكن الجزم بوجود خبر"]
+        elif blackout.get("active") and not withheld:
             lines += ["", "🚨 *نافذة خبر عالي التأثير*"]
         upcoming = news.get("upcoming") or []
         if upcoming:
@@ -203,6 +295,48 @@ def format_status(plan: dict, analysis: dict | None = None, news: dict | None = 
     lines += macro_lines(news, plan.get("direction", "none"))
     lines += ["", ADVISORY]
     return "\n".join(lines)
+
+
+def format_alert(event: dict, news: dict | None = None) -> str:
+    """The unprompted heads-up: a high-impact release is about to print.
+
+    Sent *before* the window opens, because once the blackout is active the idea
+    is already withheld and the warning is too late to be worth anything. It
+    carries the clock time as well as the countdown: "in 22 minutes" is useless
+    if the reader opens it an hour later, and a wall-clock time is what a trader
+    can put in a diary.
+    """
+    title = _esc(str(event.get("title") or "خبر"))
+    country = _esc(str(event.get("country") or "—"))
+    lines = [
+        f"🔔 *خبر عالي التأثير بعد {_when(event.get('in_minutes'))}*",
+        "",
+        f"*{title}* [{country}]",
+    ]
+    when = _clock(event.get("time"))
+    if when:
+        lines.append(f"🕐 الموعد: `{when}` UTC")
+    forecast, previous = _num(event.get("forecast")), _num(event.get("previous"))
+    if forecast != "—" or previous != "—":
+        lines.append(f"*التقدير:* {forecast} · *السابق:* {previous}")
+    lines += [
+        "",
+        "_تُحجب الأفكار الجديدة داخل النافذة (15 د قبل و15 د بعد). الأرقام تعود بعد انتهائها._",
+    ]
+    blackout = (news or {}).get("blackout") or {}
+    if blackout.get("active"):
+        lines.append("🚨 _النافذة مفتوحة الآن._")
+    lines += ["", ADVISORY]
+    return "\n".join(lines)
+
+
+def _clock(epoch) -> str:
+    """A unix time as ``HH:MM`` UTC, or '' when it is missing or malformed."""
+    try:
+        stamp = int(epoch)
+    except (TypeError, ValueError):
+        return ""
+    return time.strftime("%H:%M", time.gmtime(stamp))
 
 
 def format_analysis(sheet: dict, news: dict | None = None) -> str:
@@ -312,9 +446,11 @@ def format_news(news: dict) -> str:
     if upcoming:
         lines += ["", "⏳ *أحداث قادمة عالية التأثير:*"]
         for e in upcoming[:5]:
+            clock = _clock(e.get("time"))
+            stamp = f" 🕐 `{clock}`" if clock else ""
             lines.append(
                 f"  • {_esc(str(e.get('title')))} [{_esc(str(e.get('country')))}] "
-                f"بعد {_when(e.get('in_minutes'))}"
+                f"بعد {_when(e.get('in_minutes'))}{stamp}"
             )
     elif calendar_ok:
         lines += ["", "_لا يوجد حدث عالي التأثير في الأفق._"]

@@ -7,6 +7,12 @@ identity changes, where identity is the direction plus the setup. A plan that
 merely wobbles by a tick is the same idea, and repeating it is noise. During a
 high-impact blackout the idea is withheld and remembered, then delivered once
 the window closes.
+
+This module owns the *loop and the state*: the poll cadence, the pushed card,
+the persisted preferences, and the health port. Screen rendering lives in
+:mod:`~goldbot.telegram.screens`; the buttons and help text in
+:mod:`~goldbot.telegram.menus`. The names those modules export are re-exported
+here, so a caller that always imported them from ``bot`` keeps working.
 """
 
 from __future__ import annotations
@@ -20,102 +26,40 @@ from dataclasses import replace
 
 from ..config import Settings
 from ..pipeline import Pipeline, Result
+from .alerts import alert_key, due_news_alerts, prune
 from .client import Telegram, TelegramError
-from .format import (
-    blackout_blocks_idea,
-    format_analysis,
-    format_news,
-    format_plan,
-    format_price,
+from .format import blackout_blocks_idea, format_alert, format_price
+from .menus import (
+    ALL_TIMEFRAMES,
+    HELP,
+    MENU,
+    PANEL_HINT,
+    REPLY_MENU,
+    SENSITIVITY,
+    menu_keyboard,
+    reply_keyboard,
+    resolve_data,
+    settings_keyboard,
 )
+from .screens import CommandScreens
+
+# The names this module historically exported. Listing them here marks the
+# re-exported imports above as intentional rather than unused.
+__all__ = [
+    "ALL_TIMEFRAMES",
+    "Bot",
+    "HELP",
+    "MENU",
+    "PANEL_HINT",
+    "REPLY_MENU",
+    "SENSITIVITY",
+    "menu_keyboard",
+    "reply_keyboard",
+    "resolve_data",
+    "settings_keyboard",
+]
 
 log = logging.getLogger("goldbot")
-
-HELP = (
-    "🥇 *بوت الذهب — SMC/ICT*\n\n"
-    "⌨️ *لوحة التحكم أسفل الشاشة* — الأزرار ثابتة هناك، اضغط أي زر في أي وقت:\n"
-    "📊 التحليل · 🎯 الصفقة · 📰 الأخبار · 📈 الحالة · 🔄 تحديث · ⚙️ الإعدادات\n\n"
-    "أو اكتب الأمر:\n"
-    "/analyse — قراءة SMC/ICT الكاملة لكل فريم\n"
-    "/plan — آخر صفقة أو حالة السوق الآن\n"
-    "/news — التقويم الاقتصادي والعناوين\n"
-    "/status — ملخّص سريع\n"
-    "/refresh — قراءة جديدة فوراً (تتجاوز الكاش)\n"
-    "/settings — تغيير الفريمات والحساسية\n\n"
-    "البوت يفحص السوق كل فترة ويرسل عند ظهور فكرة جديدة.\n"
-    "تحليل استشاري فقط — لا ينفّذ أي صفقة."
-)
-
-# Every frame the data providers can serve. Order is the display order, widest
-# last, so the settings grid reads from fast to slow.
-ALL_TIMEFRAMES: tuple[str, ...] = ("M1", "M5", "M15", "M30", "H1", "H4", "D1")
-
-# Sensitivity is the minimum reward-to-risk the plan must clear. A lower bar
-# admits more setups (more signals, thinner ones); a higher bar admits fewer,
-# cleaner ones. Stored as (callback key, label, value).
-SENSITIVITY: tuple[tuple[str, str, float], ...] = (
-    ("1.5", "🟢 حساسية عالية", 1.5),
-    ("2.0", "🟡 متوازنة", 2.0),
-    ("3.0", "🔴 صارمة", 3.0),
-)
-
-# The buttons: label -> callback data. Callback data is ASCII and short,
-# because Telegram caps it at 64 bytes, and the label carries the Arabic.
-MENU: list[list[tuple[str, str]]] = [
-    [("📊 التحليل الكامل", "analyse"), ("🎯 الصفقة", "plan")],
-    [("📰 الأخبار", "news"), ("📈 حالة السوق", "status")],
-    [("🔄 تحديث", "refresh"), ("⚙️ الإعدادات", "settings")],
-]
-
-# The persistent panel pinned to the bottom of the chat. A *reply* keyboard,
-# not an inline one: it stays on screen while the trader scrolls, so a button
-# is never lost inside an old card. Each button sends its own text, and the
-# leading emoji is what ``_respond`` maps back to a command, so this list and
-# MENU must keep the same emoji heads.
-REPLY_MENU: list[list[str]] = [
-    ["📊 التحليل", "🎯 الصفقة"],
-    ["📰 الأخبار", "📈 الحالة"],
-    ["🔄 تحديث", "⚙️ الإعدادات"],
-]
-
-PANEL_HINT = "⌨️ لوحة التحكم أسفل الشاشة — اضغط أي زر في أي وقت."
-
-# Older releases used the leading emoji itself as the callback data. Telegram
-# keeps those keyboards on every message already in the chat, so a tap on an
-# old card still arrives here as "🔄" and used to dead-end on "أمر غير معروف".
-# The map is derived from MENU rather than hand-written, so it can never drift.
-_VARIATION_SELECTOR = "\ufe0f"
-
-
-def _legacy_aliases() -> dict[str, str]:
-    """Map a label, its leading emoji, and their VS16-stripped forms to a command."""
-    aliases: dict[str, str] = {}
-    for label, data in (b for row in MENU for b in row):
-        head = label.split(" ", 1)[0]
-        for key in (label, head):
-            for form in (key, key.replace(_VARIATION_SELECTOR, "")):
-                if form:
-                    aliases[form] = data
-    return aliases
-
-
-LEGACY_ALIASES: dict[str, str] = _legacy_aliases()
-
-
-def resolve_data(raw: str) -> str:
-    """Normalise a button payload or typed command to a canonical command.
-
-    Emoji payloads from pre-existing keyboards are translated here, and the
-    emoji variation selector (U+FE0F) is dropped, because Telegram may or may
-    not include it — ``⚙️`` and ``⚙`` must both resolve.
-    """
-    key = (raw or "").strip()
-    if not key:
-        return key
-    return (
-        LEGACY_ALIASES.get(key) or LEGACY_ALIASES.get(key.replace(_VARIATION_SELECTOR, "")) or key
-    )
-
 
 # Settings the user may change from the bot, and where each is remembered on
 # the instance. The value is written to the state file only once it is set,
@@ -123,65 +67,7 @@ def resolve_data(raw: str) -> str:
 _OVERRIDE_ATTR = {"timeframes": "_tf_override", "min_rr": "_rr_override"}
 
 
-def menu_keyboard() -> dict:
-    """The inline keyboard attached to every card."""
-    return {
-        "inline_keyboard": [
-            [{"text": label, "callback_data": data} for label, data in row] for row in MENU
-        ]
-    }
-
-
-def reply_keyboard() -> dict:
-    """The persistent panel pinned to the bottom of the chat.
-
-    ``is_persistent`` keeps it on screen after a message is sent, and
-    ``resize_keyboard`` stops it from swallowing half the screen. It is set
-    once and stays for the chat, so the trader always has a button in reach
-    instead of scrolling back to an old card.
-    """
-    return {
-        "keyboard": [[{"text": label} for label in row] for row in REPLY_MENU],
-        "resize_keyboard": True,
-        "is_persistent": True,
-    }
-
-
-def settings_keyboard(timeframes: tuple[str, ...], min_rr: float) -> dict:
-    """The settings grid: frame toggles, sensitivity, and a way back.
-
-    A frame is shown ticked when it is read. Sensitivity shows a tick on the
-    option whose value matches the current minimum reward-to-risk.
-    """
-    active = set(timeframes)
-    frame_rows: list[list[dict]] = [[], []]
-    for index, tf in enumerate(ALL_TIMEFRAMES):
-        frame_rows[index // 4].append(
-            {
-                "text": f"{'✅' if tf in active else '⬜'} {tf}",
-                "callback_data": f"tf:{tf}",
-            }
-        )
-    sens_row = [
-        {
-            "text": f"{'✅ ' if abs(min_rr - value) < 1e-9 else ''}{label}",
-            "callback_data": f"sens:{key}",
-        }
-        for key, label, value in SENSITIVITY
-    ]
-    return {
-        "inline_keyboard": [
-            *[row for row in frame_rows if row],
-            sens_row,
-            [
-                {"text": "🔄 تحديث", "callback_data": "refresh"},
-                {"text": "↩️ رجوع", "callback_data": "menu"},
-            ],
-        ]
-    }
-
-
-class Bot:
+class Bot(CommandScreens):
     """Polls the pipeline and pushes cards. Persists state across restarts."""
 
     def __init__(
@@ -200,6 +86,13 @@ class Bot:
         self._last_offset: int | None = None
         self._pending_key: str | None = None
         self._primed = False
+        # Event key -> epoch announced. Persisted, so a restart cannot re-fire a
+        # heads-up the trader has already seen.
+        self._announced: dict[str, float] = {}
+        # UTC day and the AI calls made within it, so the daily cap survives a
+        # restart instead of resetting on every deploy.
+        self._ai_day: str = ""
+        self._ai_calls: int = 0
         self._load()
         # Preferences live in the state file so a restart keeps them, and a
         # rebuilt pipeline is what makes a change take effect immediately.
@@ -244,6 +137,9 @@ class Bot:
             self._pending_key = state.get("pending_key")
             self._tf_override = state.get("timeframes")
             self._rr_override = state.get("min_rr")
+            self._announced = dict(state.get("announced") or {})
+            self._ai_day = str(state.get("ai_day") or "")
+            self._ai_calls = int(state.get("ai_calls") or 0)
         except (OSError, ValueError):
             pass
 
@@ -252,6 +148,9 @@ class Bot:
             "last_key": self._last_key,
             "last_offset": self._last_offset,
             "pending_key": self._pending_key,
+            "announced": self._announced,
+            "ai_day": self._ai_day,
+            "ai_calls": self._ai_calls,
         }
         if getattr(self, "_tf_override", None):
             payload["timeframes"] = list(self.settings.timeframes)
@@ -270,13 +169,23 @@ class Bot:
                 json.dump(payload, fh)
             os.replace(tmp, self.state_path)
         except OSError:
-            try:
+            with contextlib.suppress(OSError):
                 if os.path.exists(tmp):
                     os.unlink(tmp)
-            except OSError:
-                pass
 
     # ── identity ─────────────────────────────────────────────────────────
+
+    def _ai_today(self) -> int:
+        """AI calls made so far today (UTC). Rolls the counter at the date change."""
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        if today != self._ai_day:
+            self._ai_day = today
+            self._ai_calls = 0
+        return self._ai_calls
+
+    def _count_ai_call(self) -> None:
+        self._ai_calls = self._ai_today() + 1
+        self._save()
 
     @staticmethod
     def plan_key(result: Result) -> str:
@@ -298,21 +207,35 @@ class Bot:
     def tick(self, with_ai: bool = True) -> Result | None:
         """Run one analysis and push a card if the idea is new. Returns the result.
 
-        The automatic push is a *price* card and costs no model tokens: the AI
-        is only asked when a card is actually due, and even then the push stays
-        deterministic. Spending 3400 tokens per cycle on prose that is discarded
-        on all but a handful of cycles is what drained the daily quota in an
-        hour and a half.
+        Two unprompted things happen here, and nothing else:
+
+          * a **news heads-up** when a high-impact release is inside the lead
+            window — the one fact a trader cannot check for themselves;
+          * a **trade card** when the idea is new, carrying the numbers and, if
+            the budget allows, the model's read.
+
+        The AI is asked only when a card is actually due, and only within a hard
+        daily cap: spending tokens on prose that is discarded on all but a
+        handful of cycles is what drained the free tier in an hour and a half.
         """
         result = self.pipeline.run(with_ai=False)
         key = self.plan_key(result)
 
         if not self._primed:
-            # First pass: learn the current board, announce nothing.
+            # First pass: learn the current board, announce nothing — but mark
+            # the events already inside the lead window as announced, so a
+            # restart does not fire a burst of alerts for news the trader has
+            # already been living through.
             self._last_key = key
             self._primed = True
+            for event in due_news_alerts(
+                result.news, self.settings.news_alert_minutes, self._announced
+            ):
+                self._announced[alert_key(event)] = time.time()
             self._save()
             return result
+
+        self._announce_news(result.news)
 
         # A blackout withholds *new ideas*, not the price. During a high-impact
         # release the card still goes out as a price read with the window
@@ -330,7 +253,14 @@ class Bot:
             else:
                 self._pending_key = None
             self._save()
-            text = format_price(result.spot, None if withheld else result.plan, result.news)
+            analysis = self._enrich(result) if (with_ai and not withheld) else None
+            text = format_price(
+                result.spot,
+                None if withheld else result.plan,
+                result.news,
+                withheld=withheld,
+                analysis=analysis,
+            )
             try:
                 ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
             except TelegramError as exc:
@@ -345,6 +275,48 @@ class Bot:
             else:
                 self._log(f"أُرسلت فكرة — {(result.plan or {}).get('direction', '?')}")
         return result
+
+    def _announce_news(self, news: dict | None) -> None:
+        """Send a heads-up for each high-impact release inside the lead window.
+
+        Keyed and persisted, so an event is announced exactly once no matter how
+        often the loop runs or how often it restarts.
+        """
+        for event in due_news_alerts(news, self.settings.news_alert_minutes, self._announced):
+            text = format_alert(event, news)
+            try:
+                ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
+            except TelegramError as exc:
+                self._log(f"فشل تنبيه خبر ({exc})")
+                continue
+            # Marked announced only once it is actually sent: a failed send must
+            # be retried on the next cycle, not swallowed as "done".
+            if ok:
+                self._announced[alert_key(event)] = time.time()
+                self._log(f"تنبيه خبر — {event.get('title')} بعد {event.get('in_minutes')} د")
+            else:
+                self._log("فشل تنبيه خبر (رفض تيليجرام)")
+        self._announced = prune(self._announced)
+
+    def _enrich(self, result: Result) -> dict | None:
+        """Ask the model for prose, within a hard daily cap. ``None`` when capped.
+
+        The cap exists because the free tier is metered per day, and a loop that
+        calls the model on every new idea can exhaust it and then look broken
+        until midnight. When the cap is reached the deterministic plan still
+        goes out — the card loses the commentary, never the trade.
+        """
+        if not self.settings.ai_enabled:
+            return None
+        if self._ai_today() >= self.settings.ai_daily_cap:
+            return None
+        enriched = self.pipeline.analyse(result)
+        self._count_ai_call()
+        analysis = enriched.analysis or None
+        # A fallback carries no reasoning; do not spend the cap's good name on it.
+        if analysis and not (analysis.get("reasoning") or analysis.get("confidence")):
+            return None
+        return analysis
 
     # ── commands ─────────────────────────────────────────────────────────
 
@@ -406,133 +378,6 @@ class Bot:
             self.tg.answer_callback(callback_id)
             return
         self._answer(chat_id, data, callback_id=callback_id)
-
-    def _answer(self, chat_id: str, data: str, callback_id: str = "") -> None:
-        """Render one screen for a command or a button press."""
-        self._log(f"طلب: {data}")
-
-        # Settings and navigation are instant — no market read — so the toast
-        # and the re-rendered screen can go out in one pass.
-        if data == "menu":
-            if callback_id:
-                self.tg.answer_callback(callback_id)
-            self.tg.send(chat_id, HELP, keyboard=menu_keyboard())
-            self.tg.send(chat_id, PANEL_HINT, markdown=False, keyboard=reply_keyboard())
-            return
-        if data == "settings" or data.startswith("tf:") or data.startswith("sens:"):
-            body, keyboard, toast = self._settings_screen(data)
-            if callback_id:
-                self.tg.answer_callback(callback_id, toast)
-            self.tg.send(chat_id, body, keyboard=keyboard)
-            return
-
-        # Everything else reads the market: clear the spinner, then show typing.
-        if callback_id:
-            self.tg.answer_callback(callback_id)
-        self.tg.typing(chat_id)
-        # A refresh is a deliberate "read again now", so it bypasses the cache.
-        fresh = 0.0 if data == "refresh" else None
-        try:
-            if data in {"analyse", "refresh"}:
-                result = self.pipeline.run(with_ai=False, max_age=fresh)
-                body = format_analysis(result.facts, result.news)
-            elif data == "plan":
-                result = self.pipeline.run(with_ai=True, max_age=fresh)
-                body = format_plan(result.plan, result.analysis, result.news)
-            elif data == "news":
-                result = self.pipeline.run(with_ai=False, max_age=fresh)
-                body = format_news(result.news)
-            elif data == "status":
-                body = self._status_text(self.pipeline.run(with_ai=False, max_age=fresh))
-            elif data in {"start", "help", "مساعدة"}:
-                body = HELP
-            else:
-                body = "أمر غير معروف. اضغط زراً من الأزرار تحت."
-            self.tg.send(chat_id, body, keyboard=menu_keyboard())
-            # Re-pin the panel whenever the help text is shown, so a fresh
-            # /start always leaves a button within reach.
-            if data in {"start", "help", "مساعدة"}:
-                self.tg.send(chat_id, PANEL_HINT, markdown=False, keyboard=reply_keyboard())
-        except TelegramError:
-            pass
-
-    def _settings_screen(self, data: str) -> tuple[str, dict, str]:
-        """Apply one settings action and return the screen, keyboard and toast."""
-        toast = ""
-        if data.startswith("tf:"):
-            frame = data[3:].upper()
-            current = list(self.settings.timeframes)
-            if frame in current:
-                if len(current) == 1:
-                    toast = "لازم يبقى فريم واحد على الأقل"
-                else:
-                    current.remove(frame)
-                    toast = f"أُوقف {frame}"
-            elif frame in ALL_TIMEFRAMES:
-                current.append(frame)
-                toast = f"أُضيف {frame}"
-            if toast and toast.startswith(("أُوقف", "أُضيف")):
-                ordered = tuple(tf for tf in ALL_TIMEFRAMES if tf in set(current))
-                self._reconfigure(timeframes=ordered)
-        elif data.startswith("sens:"):
-            key = data[5:]
-            match = next((v for k, _, v in SENSITIVITY if k == key), None)
-            if match is not None:
-                self._reconfigure(min_rr=match)
-                toast = f"الحساسية الآن 1:{match:g}"
-
-        frames = self.settings.timeframes
-        body = (
-            "⚙️ *الإعدادات*\n\n"
-            f"*الفريمات المقروءة:* {', '.join(frames)}\n"
-            f"*الحساسية (أدنى مخاطرة/مكافأة):* `1:{self.settings.min_rr:g}`\n\n"
-            "اضغط فريماً لتفعيله أو إيقافه.\n"
-            "الحساسية: حساسية عالية = صفقات أكثر وأقل نظافة، "
-            "صارمة = صفقات أقل وأنقى.\n\n"
-            "_التغييرات تُحفظ وتستمر بعد إعادة التشغيل._"
-        )
-        return body, settings_keyboard(frames, self.settings.min_rr), toast
-
-    @staticmethod
-    def _status_text(result: Result) -> str:
-        lines = [
-            f"🥇 *XAUUSD* — {result.symbol}",
-            f"الفريمات المقروءة: {', '.join(result.sources.keys()) or '—'}",
-            f"المصادر: {', '.join(set(result.sources.values())) or '—'}",
-        ]
-        if result.spot:
-            lines.append(
-                f"تحقق السعر: فرق {result.spot.get('max_divergence_pct')}% "
-                f"({'موثوق' if result.spot.get('trusted') else 'مشكوك'})"
-            )
-        if result.errors:
-            lines.append(f"أخطاء: {len(result.errors)}")
-        return "\n".join(lines)
-
-    def _respond(self, chat_id: str, text: str) -> None:
-        command = text.split()[0].lower().lstrip("/")
-        aliases = {
-            "تحليل": "analyse",
-            "analysis": "analyse",
-            "ta": "analyse",
-            "صفقة": "plan",
-            "trade": "plan",
-            "signal": "plan",
-            "أخبار": "news",
-            "اخبار": "news",
-            "news": "news",
-            "حالة": "status",
-            "status": "status",
-            "تحديث": "refresh",
-            "refresh": "refresh",
-            "reload": "refresh",
-            "إعدادات": "settings",
-            "اعدادات": "settings",
-            "settings": "settings",
-            "menu": "menu",
-            "قائمة": "menu",
-        }
-        self._answer(chat_id, resolve_data(aliases.get(command, command)))
 
     # ── loop ─────────────────────────────────────────────────────────────
 

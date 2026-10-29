@@ -73,8 +73,20 @@ typed command.
 - `/تحديث` — read again now, bypassing the cache
 - `/إعدادات` — timeframes and sensitivity
 
-The automatic push is a price card: price, direction and the next release. It
-costs no model tokens — the AI prose is only produced when a card is asked for.
+The bot works **unprompted**. Two things arrive on their own:
+
+- a **news heads-up** inside a lead window (`GOLDBOT_NEWS_ALERT_MINUTES`,
+  default 30) before a high-impact release — the event, its UTC clock time, and
+  its forecast and previous. It is sent *before* the blackout opens, because a
+  warning delivered during the window is a warning too late. Each event is
+  announced exactly once, even across restarts.
+- a **trade card** when the idea is new, carrying the price, the direction, the
+  setup, and the numbers — entry, stop, target, R:R — plus the model's read.
+
+The AI is asked only when a card is actually due, and within a hard daily cap
+(`GOLDBOT_AI_DAILY_CAP`, default 30): a metered free tier is easy to spend into
+a silent, broken-looking state. When the cap is reached the card loses the
+commentary, never the trade. The deterministic plan is always there.
 
 The bot answers **only the chat named by `TELEGRAM_CHAT_ID`**. Every other chat
 is ignored and logged: an answer is a market read, and a read can cost an AI
@@ -139,6 +151,8 @@ docker run -d --name goldbot \
 | `GOLDBOT_MIN_RR` | Minimum reward-to-risk (default 2.0) |
 | `GOLDBOT_POLL_SECONDS` | Loop interval (default 60) |
 | `GOLDBOT_CACHE_SECONDS` | Reuse a read within this window (default 90) |
+| `GOLDBOT_NEWS_ALERT_MINUTES` | Heads-up this many minutes before a high-impact release (default 30; 0 disables) |
+| `GOLDBOT_AI_DAILY_CAP` | Ceiling on the bot's own AI calls per UTC day (default 30) |
 | `GOLDBOT_ENABLE_*` | Toggle each data provider (`KRAKEN`, `BINANCE`, `GOLDAPI`, `YAHOO`) |
 | `GOLDBOT_ENABLE_ARCHIVE` / `GOLDBOT_ARCHIVE_DIR` | Local archive on/off and where it lives |
 | `GOLDBOT_ENABLE_MACRO` | Macro context (dollar, real yield) on/off. Context only, never a signal |
@@ -176,12 +190,13 @@ down.
 ```bash
 make check                     # ruff + format + mypy + bandit + pip-audit + pytest
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 519 tests for the bot
+python -m pytest tests/ -q     # 533 tests for the bot
 ```
 
-CI runs the suite under `coverage` and **fails below a floor of 95%** of
-`src/goldbot` (measured 96% on the current revision, no module under 85%), so the
-number cannot drift away from the truth unnoticed.
+CI runs the suite under `coverage` and **fails below a floor of 96%** of
+`src/goldbot` + `starter/goldkit` (measured 98% on the current revision,
+`src/goldbot` alone at 97.6%, no module under 90%), so the number cannot drift
+away from the truth unnoticed.
 
 The extracted [starter kit](starter/README.md) carries its own tests, run by
 the same gate and counted in the same coverage floor.
@@ -261,12 +276,12 @@ src/goldbot/
   strategy/         plan construction and position sizing
   news/             economic calendar, RSS headlines, blackout, macro context
   ai/               Groq client and prompt
-  telegram/         client, formatting, the polling bot
+  telegram/         client, menus, screens, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
 starter/            goldkit — the reusable patterns, extracted and tested
 docs/               architecture, data flow, module map
-tests/              519 tests
+tests/              533 tests
 Dockerfile          two-stage image, non-root, healthcheck
 docker-compose.yml  local run with the archive on a volume
 ```

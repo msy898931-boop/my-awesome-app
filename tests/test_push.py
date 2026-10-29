@@ -229,6 +229,40 @@ def test_pending_key_survives_a_restart():
     assert reborn._pending_key == "buy:CHoCH + FVG", "the withheld idea must persist"
 
 
+def test_an_unchecked_calendar_withholds_the_idea_on_the_push_too():
+    """A failed calendar read must not authorise the push any more than the card.
+
+    The digest reports ``active=False`` when the fetch failed, so a push that
+    trusted only ``active`` sent the direction as if the rule had been checked.
+    One predicate guards both paths, and it now fails closed."""
+    rec = _Recorder()
+    bot = _bot(rec)
+    bot._last_key = "no-trade"
+    bot.pipeline.run = lambda **k: _idea(
+        blackout={"active": False, "checked": False, "reason": "تعذّر فحص التقويم: HTTP 429"}
+    )
+    bot.tick()
+    assert len(rec.sent) == 1, "the price card must still go out"
+    card = rec.sent[0]
+    assert "4046.0" in card, "the price is still delivered"
+    assert "شراء" not in card, "the idea is withheld when the calendar could not be read"
+
+
+def test_the_withheld_idea_is_delivered_when_the_calendar_reads_again():
+    """The withheld idea is not lost — it goes out once the read succeeds."""
+    rec = _Recorder()
+    bot = _bot(rec)
+    bot._last_key = "no-trade"
+    bot.pipeline.run = lambda **k: _idea(blackout={"active": False, "checked": False})
+    bot.tick()
+    assert len(rec.sent) == 1 and "شراء" not in rec.sent[0]
+
+    bot.pipeline.run = lambda **k: _idea(blackout={"active": False, "checked": True})
+    bot.tick()
+    assert len(rec.sent) == 2
+    assert "شراء" in rec.sent[1]
+
+
 # ── sources: the label must name the feed that answers ───────────────────
 
 

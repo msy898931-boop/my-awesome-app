@@ -10,7 +10,9 @@ How a read flows from the network to a card, module by module. Read
 ```
                       ┌─────────────────────────────────────────┐
    Telegram  ────────▶│  telegram/bot.py   poll, dispatch, tick  │
-   button/command     └───────────────┬─────────────────────────┘
+   button/command     │  telegram/screens.py  one screen/command  │
+                      │  telegram/menus.py    buttons, help text  │
+                      └───────────────┬─────────────────────────┘
                                       │  Pipeline.run(with_ai, with_news)
                                       ▼
                       ┌─────────────────────────────────────────┐
@@ -37,6 +39,9 @@ How a read flows from the network to a card, module by module. Read
                                       │
                                 ┌─────▼──────────┐
                                 │ telegram/      │
+                                │ menus.py       │  buttons, help
+                                │ screens.py     │  command -> screen
+                                │ bot.py         │  loop, state
                                 │ format.py      │  Arabic cards
                                 └────────────────┘
 ```
@@ -89,9 +94,16 @@ a poor ratio.
 | `macro.py` | FRED CSV + EURUSDT — dollar and real yield as **context** |
 | `window.py` | assembles the four into one `NewsPicture`, with flags |
 
-The blackout gate is the important one: a high-impact window withholds a new
-idea on **every** path — the price card still goes out with the window flagged,
-and the idea follows once the window closes.
+The blackout gate is the important one, and it **fails closed**. Three facts
+about the window are kept distinct, because they call for different answers:
+
+- a high-impact window is **open** — the idea is withheld and the card says so;
+- no window was found on a **read that succeeded** — the idea goes out;
+- the calendar **could not be read** — the idea is withheld anyway, because an
+  unknown window is not a clear one, and the card says the read failed.
+
+The rule holds on **every** path — the price card still goes out with the reason
+flagged, and the idea follows once a read succeeds.
 
 ### `ai/` — the narrative layer, and nothing else
 
@@ -102,10 +114,25 @@ is an enrichment, never a dependency.
 
 ### `telegram/` — the surface
 
-`client.py` is a thin Bot API client; `bot.py` polls, dispatches commands and
-runs the market cycle; `format.py` renders the Arabic cards. The bot answers
-**only** the chat in `TELEGRAM_CHAT_ID` — every other chat is ignored and
-logged, because an answer is a market read and a read can cost an AI call.
+| module | role |
+| --- | --- |
+| `client.py` | the Bot API client — one guarded call per method |
+| `menus.py` | buttons, help text, and the payload resolver; pure data and functions |
+| `screens.py` | the dispatcher: one screen per command, as a mixin the bot inherits |
+| `alerts.py` | when to speak up about news, unprompted; pure decision functions |
+| `bot.py` | the loop and the state — poll cadence, pushed card, health port |
+| `format.py` | the Arabic cards |
+
+`client.py` is a thin Bot API client. `menus.py` holds the buttons and the
+help text — pure data and pure functions, so a keyboard can be tested on its
+own. `screens.py` is the dispatcher: one screen per command, as a mixin the bot
+inherits. `alerts.py` decides, as a pure function, which releases deserve an
+unprompted heads-up; it is clock-free and network-free, so the decision can be
+tested on its own. `bot.py` owns the loop and the state — the poll cadence, the
+pushed card, the persisted preferences, and the health port. `format.py`
+renders the Arabic cards. The bot answers **only** the chat in
+`TELEGRAM_CHAT_ID` — every other chat is ignored and logged, because an answer
+is a market read and a read can cost an AI call.
 
 ---
 
@@ -119,8 +146,16 @@ These hold across the codebase and are what the tests defend:
 3. **A number carries its provenance.** Where it survived a failure it carries
    the observation day (`as_of`).
 4. **Degrade, do not crash.** Every network leg falls back and records why.
-5. **The AI is optional.** Every read exists without it.
-6. **Pure standard library.** No runtime dependency, ever (see CONTRIBUTING).
+5. **Fail closed, not open.** When a check cannot run, the guarded action is
+   withheld — an unread calendar withholds an idea just as an open window does.
+   "We could not check" is never treated as "nothing to find".
+6. **The AI is optional.** Every read exists without it, and the bot's own use
+   of it is capped per day so a metered tier cannot be spent into a silent,
+   broken-looking state.
+7. **Speak before, not during.** The heads-up for a high-impact release goes out
+   inside a lead window, because once the blackout opens the idea is already
+   withheld — a warning delivered then is a warning too late.
+8. **Pure standard library.** No runtime dependency, ever (see CONTRIBUTING).
 
 ---
 

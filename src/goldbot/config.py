@@ -83,6 +83,19 @@ class Settings:
     # Commands that repeat inside this window reuse the last read, so a button
     # pressed twice answers instantly instead of refetching the market.
     cache_seconds: float = field(default_factory=lambda: _float("GOLDBOT_CACHE_SECONDS", 90.0))
+    # How long before a high-impact release the bot speaks up unprompted. The
+    # point is to reach the trader *before* the print, not during it: once the
+    # blackout opens the idea is already withheld, which is too late to warn.
+    # 0 disables the heads-up.
+    news_alert_minutes: float = field(
+        default_factory=lambda: _float("GOLDBOT_NEWS_ALERT_MINUTES", 30.0)
+    )
+    # A hard ceiling on AI calls the *bot* may make per day. The free tier meters
+    # 200k tokens per model per day and a full fact sheet is ~3.4k, so an
+    # unbounded loop can spend the day's budget in an hour and then read as
+    # broken until midnight. The cap is deliberately below the tier so the bot
+    # never drives itself into a wall; the deterministic plan still goes out.
+    ai_daily_cap: int = field(default_factory=lambda: _int("GOLDBOT_AI_DAILY_CAP", 30))
 
     telegram_token: str = field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     telegram_chat: str = field(default_factory=lambda: os.environ.get("TELEGRAM_CHAT_ID", ""))

@@ -15,6 +15,7 @@ from goldbot.telegram.format import (
     _esc,
     _num,
     _when,
+    blackout_blocks_idea,
     format_analysis,
     format_plan,
     format_status,
@@ -121,6 +122,84 @@ def test_the_rejected_list_is_capped_at_three():
     card = format_plan(_plan(rejected=[f"سبب {i}" for i in range(6)]))
     assert "سبب 0" in card and "سبب 2" in card
     assert "سبب 3" not in card
+
+
+# ── an unchecked calendar must withhold, not authorise ────────────────────
+#
+# The window digest sets ``active=False`` when the calendar could not be read,
+# because an unread window is not an active one. But the predicate consulted
+# only ``active``, so a failed fetch — a 429, a dead host — silently *allowed*
+# the idea and the card showed every number as if the rule had been checked and
+# passed. That is the exact failure the project exists to prevent: an unknown
+# reported as a known. The rule now fails closed, and says which of the two it
+# is, so "no window" is never confused with "could not tell".
+
+
+def _unchecked_news(**over):
+    news = {
+        "blackout": {
+            "active": False,
+            "checked": False,
+            "reason": "تعذّر فحص التقويم: HTTP 429",
+        },
+        "upcoming": [],
+        "source": {"calendar_ok": False, "calendar_error": "HTTP 429"},
+    }
+    news.update(over)
+    return news
+
+
+def test_an_unchecked_calendar_blocks_the_idea():
+    """No read is not a clearance: the predicate must fail closed."""
+    assert blackout_blocks_idea(_unchecked_news()) is True
+
+
+def test_a_checked_calm_calendar_still_lets_the_idea_through():
+    """The other half — a read that succeeded and found nothing must not block."""
+    assert blackout_blocks_idea({"blackout": {"active": False, "checked": True}}) is False
+
+
+def test_an_unchecked_calendar_withholds_the_plan_numbers():
+    card = format_plan(_plan(), news=_unchecked_news())
+    assert "4050" not in card  # entry
+    assert "4044" not in card  # stop
+    assert "4068" not in card  # target
+
+
+def test_an_unchecked_calendar_says_the_read_failed_not_that_a_window_is_open():
+    """A failed read and an open window are different facts; the card says which."""
+    card = format_plan(_plan(), news=_unchecked_news())
+    assert "تعذّر فحص التقويم" in card
+    assert "نافذة خبر عالي التأثير" not in card
+
+
+def test_a_blackout_predating_the_checked_flag_is_still_honoured():
+    """News built without the flag (older callers, the prompt payload) still blocks
+    on ``active`` — the flag is added, not required."""
+    assert blackout_blocks_idea({"blackout": {"active": True}}) is True
+    assert blackout_blocks_idea({"blackout": {"active": False}}) is False
+
+
+def test_the_status_card_names_an_unchecked_calendar_not_an_open_window():
+    """The withheld no-trade card must say *which* fact withheld the idea."""
+    card = format_status(_plan(), news=_unchecked_news())
+    assert "محجوب" in card
+    assert "تعذّر فحص التقويم" in card
+    assert "نافذة خبر عالي التأثير" not in card
+
+
+def test_the_status_card_calls_an_unchecked_calendar_unchecked_with_no_idea():
+    """No idea and no read is still not a calm market."""
+    card = format_status({"direction": "none"}, news=_unchecked_news())
+    assert "تعذّر فحص التقويم" in card
+    assert "السوق خالٍ" not in card
+
+
+def test_a_checked_open_window_still_reads_as_a_window():
+    """The other branch of the same card — unchanged, and now pinned."""
+    card = format_status(_plan(), news={"blackout": {"active": True, "checked": True}})
+    assert "نافذة خبر عالي التأثير" in card
+    assert "تعذّر فحص التقويم" not in card
 
 
 # ── format_status: the no-trade card ────────────────────────────────────

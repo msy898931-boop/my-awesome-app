@@ -11,8 +11,8 @@ rather than to run the bot.
 
 ## The one-paragraph version
 
-A gold-market analyst for Telegram, 5,700 lines of source and 6,600 lines of
-tests, **zero runtime dependencies** (pure standard library), 519 tests, 96%
+A gold-market analyst for Telegram, 5,800 lines of source and 7,100 lines of
+tests, **zero runtime dependencies** (pure standard library), 589 tests, 98%
 coverage, and a CI gate that fails on a lint, a type, a security or a coverage
 regression. It reads the market through SMC/ICT primitives, builds a plan,
 names the news and the macro backdrop, and **says out loud when its own numbers
@@ -215,9 +215,9 @@ with a read-only root filesystem and no privilege escalation.
 
 ## 7. The test suite
 
-519 tests, 96% coverage, ~1.5 seconds, and **offline by design** — so a red run
+589 tests, 98% coverage, ~2 seconds, and **offline by design** — so a red run
 always means the logic broke, never that a feed was down. The coverage gate is
-`fail_under = 95` with a comment that states the rule: *raise it as coverage
+`fail_under = 96` with a comment that states the rule: *raise it as coverage
 rises; never lower it to make a red run green.* `source = ["goldbot"]` (not a
 path glob) is what makes coverage fail a module the suite never imports,
 because a file that is never loaded would otherwise be invisible to the report.

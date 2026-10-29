@@ -14,6 +14,12 @@ a historical study calendar-aware in a way it cannot support; and the raw JSON
 (``goldbot analyse --json``) is deliberately the analyst's unfiltered read, not a
 card a trader acts on. What a trader sees is the card, and the card honours the
 rule.
+
+The predicate **fails closed**. When the fetch fails this function forces
+``active=False`` — an unread window is not an *open* one — and sets
+``checked=False``, which the predicate reads as "withhold anyway". An unknown
+window is not a clear one, so the safe answer to "we could not check" is to
+withhold the idea, never to proceed as though the calendar had been read.
 """
 
 from __future__ import annotations
