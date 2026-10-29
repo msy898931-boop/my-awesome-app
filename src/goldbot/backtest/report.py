@@ -254,6 +254,14 @@ def format_report(result: dict) -> str:
         if share is not None and share < 90:
             line += f" — {share}% من نافذة الشموع فقط"
         lines.append(line)
+        # When the trades stop short, say *which* frame opened the gate.
+        # Otherwise the shortfall reads as a strategy that went quiet, not as a
+        # data cap — the low frame a plan needs simply has not reached back yet.
+        if share is not None and share < 90 and result.get("binding_tf"):
+            lines.append(
+                f"    السبب: الفريم {result['binding_tf']} يغطّي "
+                f"{result['binding_span_days']} يوم فقط (سقف الأشرطة)"
+            )
     lines.append("")
     lines.append("  ── المقاييس الرئيسية ──")
     lines.append(f"    التوقّع (Expectancy)     : {_fmt(m['expectancy'])} R للصفقة")

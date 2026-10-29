@@ -194,7 +194,7 @@ down.
 ```bash
 make check                     # ruff + format + mypy + bandit + pip-audit + pytest
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 533 tests for the bot
+python -m pytest tests/ -q     # 687 tests for the bot
 ```
 
 CI runs the suite under `coverage` and **fails below a floor of 96%** of
@@ -290,7 +290,7 @@ src/goldbot/
 research/           reproducible robustness, sweep and control studies
 starter/            goldkit — the reusable patterns, extracted and tested
 docs/               architecture, data flow, module map
-tests/              691 tests (+20 in starter/)
+tests/              687 tests (+20 in starter/)
 Dockerfile          two-stage image, non-root, healthcheck
 docker-compose.yml  local run with the archive on a volume
 ```

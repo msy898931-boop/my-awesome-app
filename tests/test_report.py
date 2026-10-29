@@ -251,6 +251,8 @@ def _result():
         "period": ("2024-01-01", "2024-01-31"),
         "trade_period": ("2024-01-05", "2024-01-20"),
         "trade_span_days": 15,
+        "binding_tf": "M30",
+        "binding_span_days": 16,
         "windows": 2,
         "metrics": metrics(trades),
         "consistency": consistency(windows(trades, 2)),
@@ -288,6 +290,8 @@ def test_the_report_says_where_the_trades_are_not_just_where_the_bars_are():
     assert "2024-01-05" in text and "2024-01-20" in text
     # 15 of 30 days is half the bar window, and the report must say so.
     assert "50% من نافذة الشموع" in text
+    # The shortfall names the frame that caused it, not just the number.
+    assert "الفريم M30" in text and "16 يوم" in text
 
 
 def test_a_trade_window_that_covers_the_bars_carries_no_shortfall_warning():

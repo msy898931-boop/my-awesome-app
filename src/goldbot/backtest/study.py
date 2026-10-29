@@ -76,6 +76,51 @@ def _pick_primary(series_by_tf: dict, requested: str | None) -> str:
     return max(series_by_tf, key=lambda tf: len(series_by_tf[tf].bars))
 
 
+def _trade_window(trades: list) -> tuple[tuple[str, str] | None, int]:
+    """The first→last fill, dated, and its length in days.
+
+    Bars and trades need not cover the same calendar. A walk can start long
+    before its first fill — a warmup, a quiet regime, or a low frame that only
+    reaches back so far — and reporting the bar span as the sample then
+    overstates the evidence. Unfilled limit orders are not trades and do not
+    extend the window.
+    """
+    filled = [t for t in trades if t.outcome != "no_fill"]
+    if not filled:
+        return None, 0
+    first, last = min(t.time for t in filled), max(t.time for t in filled)
+    return (
+        (
+            time.strftime("%Y-%m-%d", time.gmtime(first)),
+            time.strftime("%Y-%m-%d", time.gmtime(last)),
+        ),
+        round((last - first) / 86400),
+    )
+
+
+def _binding_frame(series_by_tf: dict, first_trade_time: int) -> tuple[str | None, int]:
+    """The frame that opened the gate: the last one available before the first fill.
+
+    Each frame is capped near the same bar count, so a low timeframe reaches back
+    the fewest days and is the first thing missing as a walk goes back in time.
+    A plan needs an HTF *and* one LTF, and the LTF loop tries M30 before the
+    shorter frames — so the frame that actually gates the walk is the one whose
+    first bar is the latest to appear before the first trade. Naming it turns
+    "the trades cover a fraction of the bars" into an arithmetic fact instead of
+    a strategy that looks like it went quiet.
+
+    Returns ``(frame, days_it_covers)``, or ``(None, 0)`` if nothing qualifies.
+    """
+    usable = {tf: sr for tf, sr in series_by_tf.items() if len(sr.bars) > 1}
+    avail = {
+        tf: sr.bars[0].time for tf, sr in usable.items() if sr.bars[0].time <= first_trade_time
+    }
+    if not avail:
+        return None, 0
+    tf = max(avail, key=lambda k: avail[k])
+    return tf, round((usable[tf].bars[-1].time - usable[tf].bars[0].time) / 86400)
+
+
 def run_study(
     settings: Settings,
     primary_tf: str | None = None,
@@ -99,6 +144,8 @@ def run_study(
             "period": None,
             "trade_period": None,
             "trade_span_days": 0,
+            "binding_tf": None,
+            "binding_span_days": 0,
             "windows": 0,
             "metrics": metrics([]),
             "equity_curve": [],
@@ -148,17 +195,15 @@ def run_study(
     # year before the first fill — a warmup, a quiet regime, or a gate that only
     # opens late — and quoting the bar span as if it were the sample would
     # overstate the evidence. The trade span is the honest denominator.
-    trade_period = None
-    trade_span_days = 0
-    filled = [t for t in trades if t.outcome != "no_fill"]
-    if filled:
-        first, last = min(t.time for t in filled), max(t.time for t in filled)
-        trade_span_days = round((last - first) / 86400)
-        trade_period = (
-            time.strftime("%Y-%m-%d", time.gmtime(first)),
-            time.strftime("%Y-%m-%d", time.gmtime(last)),
-        )
+    trade_period, trade_span_days = _trade_window(trades)
     verdict = skill_test(trades, primary, n=n_control)
+
+    # Which frame opened the gate? Name it, so a short trade window reads as a
+    # data cap rather than a strategy that went quiet.
+    first_fill = min((t.time for t in trades if t.outcome != "no_fill"), default=None)
+    binding_tf, binding_span = (
+        _binding_frame(series_by_tf, first_fill) if first_fill is not None else (None, 0)
+    )
 
     # The headline verdict is an average over every setup, so a single real edge
     # can be hidden inside it — and a single drifter can drag it down. Score
@@ -177,6 +222,8 @@ def run_study(
         "period": period,
         "trade_period": trade_period,
         "trade_span_days": trade_span_days,
+        "binding_tf": binding_tf,
+        "binding_span_days": binding_span,
         "windows": window_count,
         "metrics": metrics(trades),
         "equity_curve": equity_curve(trades),
@@ -194,6 +241,13 @@ def run_study(
             f"المصدر المُستخدَم للفريم الأساسي: {primary_series.source or 'غير مُسمّى'}",
             f"نموذج الأسعار: {settings.symbol} عبر مصدر مُتاحة/مؤشر (قد يحمل بريميوم صغير)",
             f"الفريم الأساسي: {primary_tf} عبر {len(series_by_tf)} فريم",
+            (
+                f"الفريم الذي فتح البوابة: {binding_tf} ({binding_span} يوم) — "
+                "الخطة تحتاج فريماً أعلى وآخر أدنى، والأدنى يصل إلى تاريخ أقرب، "
+                "فلا إشارة قبل أن يتوفّر"
+            )
+            if binding_tf
+            else "",
         ],
     }
 

@@ -56,6 +56,85 @@ def test_pick_primary_prefers_the_deepest_frame():
     assert _pick_primary(series, "ZZZ") == "H1"
 
 
+def test_trade_window_dates_the_fills_and_ignores_unfilled_orders():
+    """The window spans the fills; a no_fill order is not a trade."""
+    from goldbot.backtest.engine import Trade
+    from goldbot.backtest.study import _trade_window
+
+    def _t(day: int, outcome: str) -> Trade:
+        return Trade(
+            index=day,
+            time=1_600_000_000 + day * 86400,
+            direction="buy",
+            entry=2000.0,
+            stop=1990.0,
+            target=2020.0,
+            rr=2.0,
+            setup="s",
+            outcome=outcome,
+            r_multiple=1.0,
+        )
+
+    # An unfilled order sits *before* the first fill and *after* the last: if it
+    # were counted it would stretch the window on both ends.
+    trades = [_t(0, "no_fill"), _t(10, "win"), _t(14, "loss"), _t(20, "no_fill")]
+    period, span = _trade_window(trades)
+    assert period == ("2020-09-23", "2020-09-27")
+    assert span == 4
+
+
+def test_trade_window_is_empty_when_nothing_filled():
+    from goldbot.backtest.study import _trade_window
+
+    assert _trade_window([]) == (None, 0)
+
+
+def test_binding_frame_names_the_low_frame_that_gates_the_walk():
+    """The gate is the *latest-starting* frame already present at the first fill.
+
+    Every frame is capped near the same bar count, so the low frames reach back
+    the fewest days and are missing first. A plan needs an HTF and an LTF, so
+    the frame whose first bar is the last to appear before the first trade is
+    the one that opened the gate.
+    """
+    from goldbot.backtest.study import _binding_frame
+    from goldbot.models import Series
+
+    # M5 starts latest (fewest days back), M30 earlier, H1 earliest. At a first
+    # fill that M5 has not reached, M30 is the gate; the deepest *available*
+    # frame wins, not the shortest overall.
+    series = {
+        "H1": Series(timeframe="H1", source="f", bars=_swings(300, step=3600, start=1_600_000_000)),
+        "M30": Series(
+            timeframe="M30",
+            source="f",
+            bars=_swings(300, step=1800, start=1_600_000_000 + 100 * 3600),
+        ),
+        "M5": Series(
+            timeframe="M5",
+            source="f",
+            bars=_swings(300, step=300, start=1_600_000_000 + 200 * 3600),
+        ),
+    }
+    first_fill = 1_600_000_000 + 150 * 3600  # after M30 opens, before M5 does
+    tf, span = _binding_frame(series, first_fill)
+    assert tf == "M30"
+    assert span > 0
+
+    # Once the walk reaches far enough back that even M5 is present, M5 is the
+    # frame that only just appeared, so it gates instead.
+    early_fill = 1_600_000_000 + 250 * 3600
+    assert _binding_frame(series, early_fill)[0] == "M5"
+
+
+def test_binding_frame_is_absent_when_no_frame_reaches_the_first_fill():
+    from goldbot.backtest.study import _binding_frame
+    from goldbot.models import Series
+
+    series = {"H1": Series(timeframe="H1", source="f", bars=_swings(50))}
+    assert _binding_frame(series, 1) == (None, 0)
+
+
 def test_pick_primary_falls_back_to_the_longest_when_no_preference_matches():
     from goldbot.models import Series
 

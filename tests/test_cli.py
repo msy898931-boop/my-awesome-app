@@ -230,6 +230,8 @@ def _study_result() -> dict:
         "period": ("2023-11-14", "2023-11-17"),
         "trade_period": ("2023-11-14", "2023-11-16"),
         "trade_span_days": 2,
+        "binding_tf": None,
+        "binding_span_days": 0,
         "windows": 1,
         "metrics": metrics(trades),
         "equity_curve": [1.0, 0.0, 2.0, 1.0],
