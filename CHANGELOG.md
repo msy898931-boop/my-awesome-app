@@ -20,6 +20,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cell on H4 (an independent, 2253-day sample) read `beta` (+0.021R, p=0.72).
   A single-frame `skill` verdict is therefore **not** evidence; it has to
   replicate across frames to count, and this one does not.
+- **An equity curve you can actually look at.** `cli study --chart` prints
+  the cumulative-R curve as a text chart, and `--svg FILE` writes it as a
+  standalone SVG — both from `backtest/chart.py`, with no plotting
+  dependency. The zero line is drawn only when the curve crosses it, so its
+  absence is itself information; an empty curve is named, never drawn.
 
 ### Fixed
 - **A rate-limited calendar silently withheld every trade idea.** The economic

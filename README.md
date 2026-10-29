@@ -55,7 +55,7 @@ python -m goldbot.cli news        # calendar and headlines
 python -m goldbot.cli send        # send one card to the configured chat
 python -m goldbot.cli bot         # run the polling loop
 python -m goldbot.cli backtest    # the historical study
-python -m goldbot.cli study       # the deep study: windows + control + metrics
+python -m goldbot.cli study --chart --svg curve.svg   # deep study + equity curve
 ```
 
 Flags: `--no-ai` skips the AI layer, `--no-news` skips the news layer,
@@ -284,11 +284,11 @@ src/goldbot/
   news/             economic calendar, RSS headlines, blackout, macro context
   ai/               Groq client and prompt
   telegram/         client, menus, screens, the polling bot
-  backtest/         walk engine, metrics report, study, matched control
+  backtest/         walk engine, metrics, study, control, equity curve
 research/           reproducible robustness, sweep and control studies
 starter/            goldkit — the reusable patterns, extracted and tested
 docs/               architecture, data flow, module map
-tests/              647 tests (+20 in starter/)
+tests/              682 tests (+20 in starter/)
 Dockerfile          two-stage image, non-root, healthcheck
 docker-compose.yml  local run with the archive on a volume
 ```

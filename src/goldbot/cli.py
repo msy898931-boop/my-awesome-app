@@ -32,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="raw JSON output")
     parser.add_argument("--tf", default="", help="primary frame for the study (H1, H4, …)")
     parser.add_argument("--windows", type=int, default=5, help="out-of-sample windows")
+    parser.add_argument("--chart", action="store_true", help="print the equity curve as text")
+    parser.add_argument("--svg", default="", help="write the equity curve to this SVG file")
     args = parser.parse_args(argv)
 
     settings = load_settings()
@@ -100,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "study":
+        from .backtest.chart import render_curve, render_svg
         from .backtest.report import format_report
         from .backtest.study import run_study
 
@@ -108,6 +111,15 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(study, ensure_ascii=False, indent=2, default=str))
         else:
             print(format_report(study))
+            if args.chart:
+                print()
+                print(render_curve(study["equity_curve"]))
+        if args.svg:
+            # utf-8 explicitly: the default locale on a bare host can be ascii,
+            # which would refuse the SVG's own text labels.
+            with open(args.svg, "w", encoding="utf-8") as handle:
+                handle.write(render_svg(study["equity_curve"]))
+            print(f"حُفظ المنحنى في {args.svg}")
         return 0
 
     parser.print_help()

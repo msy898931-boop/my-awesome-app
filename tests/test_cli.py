@@ -116,6 +116,66 @@ def test_backtest_command_forwards_the_frame(patched, monkeypatch, capsys):
     assert seen["tf"] == "H4"
 
 
+def test_study_chart_flag_prints_the_curve(patched, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    assert cli.main(["study", "--chart"]) == 0
+    out = capsys.readouterr().out
+    assert "منحنى رأس المال" in out
+
+
+def test_study_svg_flag_writes_a_file(patched, monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    target = tmp_path / "curve.svg"
+    assert cli.main(["study", "--svg", str(target)]) == 0
+    svg = target.read_text(encoding="utf-8")
+    assert svg.startswith("<svg")
+    assert "<polyline" in svg
+    assert "حُفظ المنحنى" in capsys.readouterr().out
+
+
+def _study_result() -> dict:
+    """A minimal but *complete* study dict: the real metric block, a short curve."""
+    from goldbot.backtest.engine import Trade
+    from goldbot.backtest.report import metrics
+
+    trades = [
+        Trade(
+            index=i,
+            time=1_700_000_000 + i * 3600,
+            direction="buy",
+            entry=2000.0,
+            stop=1990.0,
+            target=2020.0,
+            rr=2.0,
+            setup="bos",
+            outcome="win" if r > 0 else "loss",
+            r_multiple=r,
+        )
+        for i, r in enumerate((1.0, -1.0, 2.0))
+    ]
+    return {
+        "symbol": "XAUUSD",
+        "primary_tf": "H1",
+        "bars": 100,
+        "span_days": 3,
+        "windows": 1,
+        "metrics": metrics(trades),
+        "equity_curve": [1.0, 0.0, 2.0],
+        "consistency": {"windows": 1, "positive": 1, "share": 1.0, "thin": 0},
+        "control": None,
+        "setup_control": {},
+        "by_direction": {"buy": metrics(trades)},
+        "by_setup": {"bos": metrics(trades)},
+        "notes": ["اختبار"],
+    }
+
+
 def test_unknown_command_exits_nonzero():
     with pytest.raises(SystemExit) as exc:
         cli.main(["nonsense"])

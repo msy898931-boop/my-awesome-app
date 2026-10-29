@@ -106,7 +106,10 @@ long-gold bias beat a naive random control, and only the regime-matched control
 exposed it as drift. The study scores each setup against its *own* control, not
 just the pooled average — a single real edge or a single drifter would otherwise
 vanish inside the headline verdict — and the report prints that per-setup
-verdict beside its expectancy. `research/study_control.py` runs it over the archive.
+verdict beside its expectancy. `chart.py` draws the cumulative-R curve with no
+plotting dependency — a text chart for a terminal and a standalone SVG for a
+browser, sharing one mapping onto a grid, with the zero line drawn only when the
+curve crosses it. `research/study_control.py` runs it over the archive.
 
 ### `news/` — calendar, wires, macro, blackout
 

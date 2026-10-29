@@ -32,7 +32,7 @@ from __future__ import annotations
 from ..config import Settings
 from .control import CONTROL, skill_test
 from .engine import _walk
-from .report import consistency, format_report, metrics, windows
+from .report import consistency, equity_curve, format_report, metrics, windows
 
 # Preference order for the walked frame, deepest sample first. Every frame the
 # bot actually reads is still loaded — the walk reads them the way live does —
@@ -89,6 +89,7 @@ def run_study(
             "span_days": 0,
             "windows": 0,
             "metrics": metrics([]),
+            "equity_curve": [],
             "consistency": {"windows": 0, "positive": 0, "share": None, "thin": 0},
             "control": None,
             "by_direction": {},
@@ -129,6 +130,7 @@ def run_study(
         "span_days": span_days,
         "windows": window_count,
         "metrics": metrics(trades),
+        "equity_curve": equity_curve(trades),
         "window_metrics": block_metrics,
         "consistency": consistency(blocks),
         "control": verdict,
