@@ -308,3 +308,63 @@ def test_a_zero_risk_plan_has_no_rr_and_is_dropped():
     )
     # entry == stop is not "below" the entry, so both the stop and the R:R fail.
     assert len(reasons) >= 1
+
+
+# ── a malformed reply must not end the chain ─────────────────────────────
+
+
+def _json_validate_failed() -> urllib.error.HTTPError:
+    """The 400 Groq returns when a reasoning model's JSON is cut mid-object."""
+    return urllib.error.HTTPError(
+        "https://x",
+        400,
+        "bad request",
+        {},
+        io.BytesIO(
+            json.dumps(
+                {"error": {"code": "json_validate_failed", "message": "Failed to validate JSON."}}
+            ).encode()
+        ),
+    )
+
+
+def test_a_malformed_json_reply_advances_to_the_next_model(monkeypatch):
+    """One model returning bad JSON must not abandon the models behind it.
+
+    This is the production failure: the primary was out of daily quota, the
+    fallback returned malformed JSON, and the raise ended the chain — so the
+    whole AI layer read as down.
+    """
+    settings = _settings(groq_model="primary", groq_fallbacks=("fallback",))
+    analyst = Analyst(settings)
+
+    def _behaviour(model, prompt):
+        if model == "primary":
+            raise _json_validate_failed()
+        return SOUND_REPLY
+
+    _stub_call(monkeypatch, analyst, _behaviour)
+    result = analyst.analyse(_facts(), min_rr=2.0)
+    assert result.validated is True, "the chain must reach the model that answers"
+    assert result.confidence == 0.62
+
+
+def test_malformed_json_on_every_model_degrades_to_the_fallback(monkeypatch):
+    """When no model returns valid JSON, the read degrades — it does not raise."""
+    settings = _settings(groq_model="m1", groq_fallbacks=("m2",))
+    analyst = Analyst(settings)
+    _stub_call(monkeypatch, analyst, lambda m, p: (_ for _ in ()).throw(_json_validate_failed()))
+    result = analyst.analyse(_facts(), min_rr=2.0)
+    assert result.configured is False
+    assert "JSON" in result.error
+
+
+def test_the_token_budget_leaves_room_for_the_scratchpad(monkeypatch):
+    """A reasoning model emits content *after* thinking, so the cap must cover both.
+
+    Measured: 3000 truncates the JSON (400 ``json_validate_failed``); 6000 is
+    valid. Pinned so a future trim to "save tokens" cannot silently disable the
+    fallback model again.
+    """
+    monkeypatch.delenv("GROQ_MAX_TOKENS", raising=False)
+    assert Settings().groq_max_tokens >= 6000

@@ -144,7 +144,7 @@ docker run -d --name goldbot \
 | `GROQ_API_KEY` | Groq key. Optional — without it the bot still produces plans |
 | `GROQ_MODEL` | Default `openai/gpt-oss-120b` |
 | `GROQ_FALLBACK_MODELS` | Tried in order when the primary's quota is spent |
-| `GROQ_MAX_TOKENS` | Reply cap (default 3000; the reasoning model needs headroom) |
+| `GROQ_MAX_TOKENS` | Reply cap (default 6000; a reasoning model spends the budget on its scratchpad before emitting JSON, and a cap of 3000 truncated the reply into a `json_validate_failed` 400) |
 | `GOLDBOT_SYMBOL` | Default `XAUUSD` |
 | `GOLDBOT_TIMEFRAMES` | Default `M5,M15,M30,H1,H4` |
 | `GOLDBOT_BARS` | Bars per frame (default 220) |

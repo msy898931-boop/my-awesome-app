@@ -6,6 +6,17 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **The AI layer was effectively disabled in production.** Two faults stacked:
+  the reply budget defaulted to 3000 tokens, which a reasoning model spends on
+  its scratchpad before emitting anything, so `openai/gpt-oss-20b` returned a
+  400 `json_validate_failed` (the JSON was cut mid-object); and that 400 was
+  re-raised, which ended the model chain instead of trying the next model. With
+  the primary out of daily quota, both paths failed and every card fell back to
+  the deterministic read. The budget is now 6000 (measured: valid JSON twice in
+  a row), and a malformed reply advances the chain. The failure was found by
+  running `python -m goldbot.cli card`, not by reading the code.
+
 ### Added
 - **`GOLDBOT_DATA_DIR`, a single root for everything that must outlive the
   process** — the bot's state file and the candle archive. On a host with an
