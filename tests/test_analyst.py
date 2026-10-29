@@ -368,3 +368,34 @@ def test_the_token_budget_leaves_room_for_the_scratchpad(monkeypatch):
     """
     monkeypatch.delenv("GROQ_MAX_TOKENS", raising=False)
     assert Settings().groq_max_tokens >= 6000
+
+
+# ── provenance: the read names its author ────────────────────────────────
+
+
+def test_the_read_records_which_model_answered(monkeypatch):
+    """A read without its author is an opinion with no source."""
+    settings = _settings(groq_model="primary", groq_fallbacks=("fallback",))
+    analyst = Analyst(settings)
+
+    def _behaviour(model, prompt):
+        if model == "primary":
+            raise _json_validate_failed()
+        return SOUND_REPLY
+
+    _stub_call(monkeypatch, analyst, _behaviour)
+    result = analyst.analyse(_facts(), min_rr=2.0)
+    assert result.model == "fallback"
+
+
+def test_a_fallback_read_names_no_model(monkeypatch):
+    """No model answered, so the read must not claim one.
+
+    Dressing a deterministic read as a model's opinion is the same fault as
+    inventing a confidence for it.
+    """
+    analyst = Analyst(_settings())
+    _stub_call(monkeypatch, analyst, lambda m, p: (_ for _ in ()).throw(ValueError("x")))
+    result = analyst.analyse(_facts())
+    assert result.configured is False
+    assert result.model == ""

@@ -95,6 +95,19 @@ def test_a_blackout_withholds_the_idea_on_the_plan_card():
     assert "محجوب" in card
 
 
+def test_the_card_names_the_model_that_wrote_the_read():
+    """Provenance: a read without its author is an opinion with no source."""
+    card = format_plan(_plan(), analysis={"reasoning": "شرح", "model": "openai/gpt-oss-120b"})
+    assert "openai/gpt-oss-120b" in card
+    assert "المصدر" in card
+
+
+def test_a_read_without_a_model_shows_no_source_line():
+    """The fallback has no author, so it must not be given one."""
+    card = format_plan(_plan(), analysis={"reasoning": "شرح", "model": ""})
+    assert "المصدر" not in card
+
+
 def test_a_blackout_also_hides_the_ai_confidence():
     card = format_plan(_plan(), analysis={"confidence": 0.71}, news={"blackout": {"active": True}})
     assert "71%" not in card
