@@ -131,6 +131,10 @@ def _analysis_block(lines: list[str], analysis: dict) -> None:
         lines.append(f"*ثقة التقدير:* `{round(float(confidence) * 100)}%`")
     if reasoning:
         lines += ["", "*الشرح:*", _esc(reasoning)]
+    model = str(analysis.get("model") or "").strip()
+    if model:
+        # Provenance: a read without its author is an opinion with no source.
+        lines.append(f"_المصدر: {_esc(model)}_")
 
 
 def calendar_unchecked(news: dict | None) -> bool:
@@ -231,6 +235,10 @@ def format_plan(plan: dict, analysis: dict | None = None, news: dict | None = No
     reason = plan.get("reason") or (analysis or {}).get("reasoning")
     if reason:
         lines += ["", "*الشرح:*", _esc(reason)]
+    model = str((analysis or {}).get("model") or "").strip()
+    if model:
+        # Provenance: a read without its author is an opinion with no source.
+        lines.append(f"_المصدر: {_esc(model)}_")
 
     if analysis and analysis.get("market_state"):
         lines += ["", "*حالة السوق:*", _esc(analysis["market_state"])]
@@ -274,6 +282,11 @@ def format_status(plan: dict, analysis: dict | None = None, news: dict | None = 
         lines += ["*حالة السوق:*", _esc(analysis["market_state"]), ""]
     if analysis and analysis.get("bias"):
         lines.append(f"*الانحياز العام:* {BIAS_AR.get(analysis['bias'], analysis['bias'])}")
+    if analysis and not withheld:
+        # The reasoning and its author belong on the no-trade card too: "why
+        # nothing" is the question this card exists to answer. Withheld means a
+        # window is open, and the analysis would leak the idea it suppresses.
+        _analysis_block(lines, analysis)
     if plan.get("rejected"):
         lines += ["", "*الأسباب:*"]
         lines += [f"• {_esc(str(r))}" for r in plan["rejected"][:5]]

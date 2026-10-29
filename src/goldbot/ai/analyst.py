@@ -52,6 +52,10 @@ class AnalysisResult:
 
     configured: bool = False
     validated: bool = False
+    # Which model answered, so a read can be traced to its author. Empty when
+    # the fallback produced it — there was no model, and saying otherwise would
+    # dress a deterministic read as a model's opinion.
+    model: str = ""
     market_state: str = ""
     bias: str = "neutral"
     setup: str | None = None
@@ -82,7 +86,7 @@ class Analyst:
         if not self.settings.ai_enabled:
             return self._fallback(facts, "لم يُضبط مفتاح الذكاء الاصطناعي")
         try:
-            reply = self._call(facts, news)
+            reply, model = self._call(facts, news)
         except Exception as exc:  # transport must never take the engine down
             return self._fallback(facts, f"تعذّر الوصول للنموذج: {exc}")
 
@@ -92,6 +96,7 @@ class Analyst:
 
         result = AnalysisResult(
             configured=True,
+            model=model,
             market_state=str(parsed.get("market_state", "")).strip(),
             bias=_norm_bias(parsed.get("bias")),
             setup=parsed.get("setup") or None,
@@ -113,8 +118,11 @@ class Analyst:
                 seen.append(m)
         return seen
 
-    def _call(self, facts: dict, news: dict | None) -> str:
+    def _call(self, facts: dict, news: dict | None) -> tuple[str, str]:
         """Ask each model in the chain until one answers.
+
+        Returns ``(reply, model)`` — the model name travels with its answer so
+        the read can be traced to its author rather than attributed to "the AI".
 
         Groq meters quota per model, so a spent budget on the primary is not
         fatal: the next model in the chain is tried. Two kinds of 429 are
@@ -135,7 +143,7 @@ class Analyst:
         for attempt in range(2):
             for model in models:
                 try:
-                    return self._call_model(model, prompt)
+                    return self._call_model(model, prompt), model
                 except urllib.error.HTTPError as exc:
                     detail, code = _http_reason(exc)
                     if exc.code == 429:
