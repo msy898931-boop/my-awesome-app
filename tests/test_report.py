@@ -115,6 +115,28 @@ def test_sortino_is_none_when_every_loss_is_identical():
     assert _sortino([2.0, -1.0, -1.0, 3.0]) is None
 
 
+def test_ar_count_agrees_with_the_counted_noun():
+    from goldbot.backtest.report import _ar_count
+
+    words = ("صفقة", "صفقتان", "صفقات")
+    assert _ar_count(1, *words) == "1 صفقة"
+    assert _ar_count(2, *words) == "2 صفقتان"
+    assert _ar_count(4, *words) == "4 صفقات"
+    # 11–99 take the singular again, as in the streak of 34 a real run prints.
+    assert _ar_count(34, *words) == "34 صفقة"
+
+
+def test_fmt_signs_returns_but_not_proportions():
+    from goldbot.backtest.report import _fmt
+
+    # A return-like figure shows its direction; a rate or a p-value does not.
+    assert _fmt(0.055) == "+0.055"
+    assert _fmt(-0.042) == "-0.042"
+    assert _fmt(29.5, 1, "%", signed=False) == "29.5%"
+    assert _fmt(0.287, signed=False) == "0.287"
+    assert _fmt(None) == "—"
+
+
 def test_equity_curve_is_cumulative_and_ignores_unfilled():
     curve = equity_curve([_t(1.0), _unfilled(), _t(-0.5), _t(2.0)])
     assert curve == [1.0, 0.5, 2.5]
@@ -193,7 +215,7 @@ def test_the_report_prints_an_em_dash_for_an_absent_metric():
 def test_the_report_includes_the_control_verdict_and_the_consistency_line():
     text = format_report(_result())
     assert "حزمة السيطرة" in text
-    assert "خارج العيّنة" in text
+    assert "الثبات عبر الزمن" in text
     assert "XAUUSD" in text
 
 

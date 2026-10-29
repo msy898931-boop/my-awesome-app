@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "backtest":
         from .backtest.engine import run_backtest
 
-        report = run_backtest(settings)
+        report = run_backtest(settings, primary_tf=args.tf or None)
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
 

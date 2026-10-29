@@ -97,9 +97,23 @@ def test_news_never_asks_the_model(patched):
 
 
 def test_backtest_runs_the_study(patched, monkeypatch, capsys):
-    monkeypatch.setattr("goldbot.backtest.engine.run_backtest", lambda settings: {"trades": 0})
+    monkeypatch.setattr(
+        "goldbot.backtest.engine.run_backtest", lambda settings, primary_tf=None: {"trades": 0}
+    )
     assert cli.main(["backtest"]) == 0
     assert json.loads(capsys.readouterr().out) == {"trades": 0}
+
+
+def test_backtest_command_forwards_the_frame(patched, monkeypatch, capsys):
+    seen = {}
+
+    def _fake(settings, primary_tf=None):
+        seen["tf"] = primary_tf
+        return {"trades": 0}
+
+    monkeypatch.setattr("goldbot.backtest.engine.run_backtest", _fake)
+    assert cli.main(["backtest", "--tf", "H4"]) == 0
+    assert seen["tf"] == "H4"
 
 
 def test_unknown_command_exits_nonzero():

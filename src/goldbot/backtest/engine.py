@@ -296,11 +296,13 @@ def _summarise(report: BacktestReport, trades: list[Trade]) -> BacktestReport:
     return report
 
 
-def run_backtest(settings: Settings, with_ai: bool = False) -> dict:
+def run_backtest(settings: Settings, with_ai: bool = False, primary_tf: str | None = None) -> dict:
     """Fetch history, walk it forward, and report the honest scoreboard.
 
     The AI layer is off by default here: it is non-deterministic, and a study
-    that cannot be reproduced is not a study.
+    that cannot be reproduced is not a study. ``primary_tf`` picks the walked
+    frame; left ``None`` it defaults to M15 when available, the frame with the
+    most signals.
     """
     from ..data.feed import build_feed
 
@@ -319,13 +321,14 @@ def run_backtest(settings: Settings, with_ai: bool = False) -> dict:
             symbol=settings.symbol, bars_tested=0, signals=0, notes=["لا بيانات تاريخية متاحة"]
         ).as_dict()
 
-    primary_tf = "M15" if "M15" in series_by_tf else next(iter(series_by_tf))
+    if primary_tf not in series_by_tf:
+        primary_tf = "M15" if "M15" in series_by_tf else next(iter(series_by_tf))
     report = BacktestReport(
         symbol=settings.symbol,
         bars_tested=len(series_by_tf[primary_tf].bars),
         signals=0,
     )
-    trades = _walk(series_by_tf, settings.min_rr)
+    trades = _walk(series_by_tf, settings.min_rr, primary_tf=primary_tf)
     _summarise(report, trades)
     report.notes.append(f"الفريم الأساسي: {primary_tf}")
     report.notes.append(f"وقت التشغيل: {int(time.time())}")

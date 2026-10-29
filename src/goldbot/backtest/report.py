@@ -175,13 +175,27 @@ def consistency(blocks: Sequence[Sequence[Trade]]) -> dict:
     }
 
 
-def _fmt(value, digits: int = 3, suffix: str = "") -> str:
-    """A value, or an em dash. ``None`` must never be printed as a number."""
+def _fmt(value, digits: int = 3, suffix: str = "", *, signed: bool = True) -> str:
+    """A value, or an em dash. ``None`` must never be printed as a number.
+
+    A return-like figure is signed so its direction reads at a glance; a
+    proportion (a win rate) is not — a leading ``+`` on 29.5% says nothing.
+    """
     if value is None:
         return "—"
     if isinstance(value, float):
-        return f"{value:+.{digits}f}{suffix}"
+        sign = "+" if signed else ""
+        return f"{value:{sign}.{digits}f}{suffix}"
     return f"{value}{suffix}"
+
+
+def _ar_count(n: int, singular: str, dual: str, plural: str) -> str:
+    """Arabic counted-noun agreement: dual for two, plural for three to ten."""
+    if n == 2:
+        return f"2 {dual}"
+    if n == 1 or not (3 <= n % 100 <= 10):
+        return f"{n} {singular}"
+    return f"{n} {plural}"
 
 
 def format_report(result: dict) -> str:
@@ -192,27 +206,29 @@ def format_report(result: dict) -> str:
     lines.append(f"  باكتست احترافي — {result['symbol']} على {result['primary_tf']}")
     lines.append("═" * 64)
     lines.append(
-        f"  الشمعة: {result['bars']} | الصفقات: {m['n']} (استُثنيت {m['no_fill']} بلا تنفيذ)"
+        f"  الشموع: {result['bars']} | الصفقات: {m['n']} (استُثنيت {m['no_fill']} بلا تنفيذ)"
     )
-    lines.append(f"  النافذة الزمنية: {result['span_days']} يوم | نوافذ OOS: {result['windows']}")
+    lines.append(f"  النافذة الزمنية: {result['span_days']} يوم | نوافذ: {result['windows']}")
     lines.append("")
     lines.append("  ── المقاييس الرئيسية ──")
     lines.append(f"    التوقّع (Expectancy)     : {_fmt(m['expectancy'])} R للصفقة")
     lines.append(f"    إجمالي R                 : {_fmt(m['total_r'])}")
     lines.append(
-        f"    نسبة النجاح              : {_fmt(m['win_rate'] and m['win_rate'] * 100, 1, '%')}"
+        f"    نسبة النجاح              : {_fmt(m['win_rate'] and m['win_rate'] * 100, 1, '%', signed=False)}"
     )
-    lines.append(f"    معامل الربح (PF)         : {_fmt(m['profit_factor'])}")
+    lines.append(f"    معامل الربح (PF)         : {_fmt(m['profit_factor'], signed=False)}")
     lines.append(f"    متوسط الربح / الخسارة   : {_fmt(m['avg_win_r'])} / {_fmt(m['avg_loss_r'])}")
-    lines.append(f"    نسبة العائد (Payoff)     : {_fmt(m['payoff'])}")
+    lines.append(f"    نسبة العائد (Payoff)     : {_fmt(m['payoff'], signed=False)}")
     lines.append(f"    أقصى تراجع (بالـ R)      : {_fmt(m['max_drawdown_r'])}")
-    lines.append(f"    أطول سلسلة خسارة         : {_fmt(m['longest_loss_streak'])} صفقة")
+    lines.append(
+        f"    أطول سلسلة خسارة         : {_ar_count(m['longest_loss_streak'] or 0, 'صفقة', 'صفقتان', 'صفقات')}"
+    )
     lines.append(f"    Sharpe / Sortino         : {_fmt(m['sharpe'])} / {_fmt(m['sortino'])}")
     lines.append(f"    أفضل / أسوأ صفقة         : {_fmt(m['best_r'])} / {_fmt(m['worst_r'])}")
 
     c = result["consistency"]
     lines.append("")
-    lines.append("  ── الثبات خارج العيّنة ──")
+    lines.append("  ── الثبات عبر الزمن (النوافذ) ──")
     if c["share"] is None:
         lines.append(f"    نوافذ قابلة للحكم: 0 (رقيقة: {c['thin']}) — لا حكم")
     else:
@@ -232,8 +248,9 @@ def format_report(result: dict) -> str:
         if out["real_mean"] is not None:
             lines.append(
                 f"    متوسط R={_fmt(out['real_mean'])} | سيطرة عشوائية={_fmt(out['random_mean'])}"
-                f" (p={_fmt(out['random_p'])}) | سيطرة النظام={_fmt(out['regime_mean'])}"
-                f" (p={_fmt(out['regime_p'])})"
+                f" (p={_fmt(out['random_p'], signed=False)})"
+                f" | سيطرة النظام={_fmt(out['regime_mean'])}"
+                f" (p={_fmt(out['regime_p'], signed=False)})"
             )
         lines.append(
             "    ملاحظة: skill تعني تفوّقاً على السيطرة العشوائية *و* سيطرة النظام؛ "
@@ -245,14 +262,14 @@ def format_report(result: dict) -> str:
     for direction, sub in result["by_direction"].items():
         lines.append(
             f"    {direction:5s}: n={sub['n']:4d} | توقّع={_fmt(sub['expectancy'])}"
-            f" | PF={_fmt(sub['profit_factor'])}"
+            f" | PF={_fmt(sub['profit_factor'], signed=False)}"
         )
     lines.append("")
     lines.append("  ── حسب النموذج ──")
     for setup, sub in result["by_setup"].items():
         lines.append(
             f"    {setup[:24]:24s}: n={sub['n']:4d} | توقّع={_fmt(sub['expectancy'])}"
-            f" | PF={_fmt(sub['profit_factor'])}"
+            f" | PF={_fmt(sub['profit_factor'], signed=False)}"
         )
     lines.append("")
     lines.append(f"  ملاحظات: {' | '.join(result['notes'])}")
