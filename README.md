@@ -176,12 +176,13 @@ down.
 ```bash
 make check                     # ruff + format + mypy + bandit + pip-audit + pytest
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 519 tests for the bot
+python -m pytest tests/ -q     # 533 tests for the bot
 ```
 
-CI runs the suite under `coverage` and **fails below a floor of 95%** of
-`src/goldbot` (measured 96% on the current revision, no module under 85%), so the
-number cannot drift away from the truth unnoticed.
+CI runs the suite under `coverage` and **fails below a floor of 96%** of
+`src/goldbot` + `starter/goldkit` (measured 98% on the current revision,
+`src/goldbot` alone at 97.6%, no module under 90%), so the number cannot drift
+away from the truth unnoticed.
 
 The extracted [starter kit](starter/README.md) carries its own tests, run by
 the same gate and counted in the same coverage floor.
@@ -261,12 +262,12 @@ src/goldbot/
   strategy/         plan construction and position sizing
   news/             economic calendar, RSS headlines, blackout, macro context
   ai/               Groq client and prompt
-  telegram/         client, formatting, the polling bot
+  telegram/         client, menus, screens, the polling bot
   backtest/         the historical study engine
 research/           reproducible robustness and sweep studies
 starter/            goldkit — the reusable patterns, extracted and tested
 docs/               architecture, data flow, module map
-tests/              519 tests
+tests/              533 tests
 Dockerfile          two-stage image, non-root, healthcheck
 docker-compose.yml  local run with the archive on a volume
 ```

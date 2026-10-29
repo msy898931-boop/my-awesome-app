@@ -10,7 +10,9 @@ How a read flows from the network to a card, module by module. Read
 ```
                       ┌─────────────────────────────────────────┐
    Telegram  ────────▶│  telegram/bot.py   poll, dispatch, tick  │
-   button/command     └───────────────┬─────────────────────────┘
+   button/command     │  telegram/screens.py  one screen/command  │
+                      │  telegram/menus.py    buttons, help text  │
+                      └───────────────┬─────────────────────────┘
                                       │  Pipeline.run(with_ai, with_news)
                                       ▼
                       ┌─────────────────────────────────────────┐
@@ -37,6 +39,9 @@ How a read flows from the network to a card, module by module. Read
                                       │
                                 ┌─────▼──────────┐
                                 │ telegram/      │
+                                │ menus.py       │  buttons, help
+                                │ screens.py     │  command -> screen
+                                │ bot.py         │  loop, state
                                 │ format.py      │  Arabic cards
                                 └────────────────┘
 ```
@@ -102,10 +107,22 @@ is an enrichment, never a dependency.
 
 ### `telegram/` — the surface
 
-`client.py` is a thin Bot API client; `bot.py` polls, dispatches commands and
-runs the market cycle; `format.py` renders the Arabic cards. The bot answers
-**only** the chat in `TELEGRAM_CHAT_ID` — every other chat is ignored and
-logged, because an answer is a market read and a read can cost an AI call.
+| module | role |
+| --- | --- |
+| `client.py` | the Bot API client — one guarded call per method |
+| `menus.py` | buttons, help text, and the payload resolver; pure data and functions |
+| `screens.py` | the dispatcher: one screen per command, as a mixin the bot inherits |
+| `bot.py` | the loop and the state — poll cadence, pushed card, health port |
+| `format.py` | the Arabic cards |
+
+`client.py` is a thin Bot API client. `menus.py` holds the buttons and the
+help text — pure data and pure functions, so a keyboard can be tested on its
+own. `screens.py` is the dispatcher: one screen per command, as a mixin the bot
+inherits. `bot.py` owns the loop and the state — the poll cadence, the pushed
+card, the persisted preferences, and the health port. `format.py` renders the
+Arabic cards. The bot answers **only** the chat in `TELEGRAM_CHAT_ID` — every
+other chat is ignored and logged, because an answer is a market read and a read
+can cost an AI call.
 
 ---
 

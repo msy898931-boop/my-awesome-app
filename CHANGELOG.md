@@ -7,6 +7,20 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Repository governance files.** `SECURITY.md` (private disclosure route and
+  the narrow threat model), `CODE_OF_CONDUCT.md`, `AGENTS.md` (the instructions
+  an agent needs on arrival), `.editorconfig`, `.github/CODEOWNERS`, and issue
+  and pull-request templates. A repo a stranger can contribute to needs to say
+  how, and what it will not accept.
+- **A secret scan in CI and in `pre-commit`.** `gitleaks` runs on every change
+  with full history, so a committed key is caught at the door rather than
+  discovered after it has already been pushed. The pre-commit hooks also now
+  cover `starter/`, which the linters already checked but the hooks did not.
+- **Tests for the loop itself** (`tests/test_bot_loop.py`): the first-tick
+  priming, the send-failure and rejected-send log lines, the malformed-update
+  guards, the `run_forever` cadence (including the skip until the interval is
+  due), and the `PORT` / self-ping wiring. `telegram/bot.py` went from 79% to
+  99% covered; the suite from 539 to 553 tests.
 - **A container image (`Dockerfile`, `docker-compose.yml`).** Two stages: a
   wheel is built, then installed into a runtime that carries only the
   interpreter and the package — no build toolchain, no pip cache. The process
@@ -19,6 +33,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   throwaway token, and the job fails unless the container answers its own
   health endpoint and does not run as root — so a broken build is caught before
   a deploy rather than at one.
+
 - **`PORTFOLIO.md`**, an engineering narrative: the decisions and the
   measurements behind them, written for someone reading the repository to judge
   the work rather than to run the bot.
@@ -111,16 +126,20 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   had none) and `config.py` (the `.env` parser and the coercion helpers).
 
 ### Changed
-- The coverage floor now applies to `goldkit` as well as `goldbot`; the
-  total stays 96% (539 tests including the starter kit's).
+- **`telegram/bot.py` is split by responsibility.** `menus.py` holds the
+  buttons, help text and payload resolver (pure data and functions);
+  `screens.py` holds the command dispatcher as a mixin; `bot.py` keeps the loop
+  and the state. The three files each have one job, and the names the old module
+  exported are re-exported from `bot.py`, so no caller changed. The coverage
+  floor rises to 96% and applies to `goldkit` as well as `goldbot` (measured
+  98% across both, no module under 90%; 553 tests including the starter kit's).
 - `news/rss.py` refuses an oversized body and any document carrying a
   `DOCTYPE`/`ENTITY` declaration before parsing it, the stdlib-only defence
   against entity-expansion attacks. Verified against all three live feeds,
   which carry no DOCTYPE.
 - The suite is now measured, not asserted. `coverage` runs the tests in CI with
-  a **floor of 94%** (`[tool.coverage.report] fail_under`), so the figure can no
-  longer drift away from the truth unnoticed. Measured on this revision: **95%**
-  of `src/goldbot`, with no module below 85%; `format.py`, `prompt.py`,
+  a floor (`[tool.coverage.report] fail_under`), so the figure can no
+  longer drift away from the truth unnoticed; `format.py`, `prompt.py`,
   `health.py`, `pipeline.py` and the data base are at 100%.
 - The blackout is now **enforced on every path**, not merely printed. A
   high-impact window withholds the direction and setup from the automatic push;
