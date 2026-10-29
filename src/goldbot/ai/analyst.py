@@ -145,6 +145,16 @@ class Analyst:
                         else:
                             last_error = RuntimeError(f"{model}: تجاوز حد الاستخدام ({detail})")
                         continue  # a different model has its own quota
+                    if code == "json_validate_failed":
+                        # The model produced malformed JSON — usually a reasoning
+                        # model whose scratchpad ate the token budget, not a fault
+                        # in the request. Another model may answer cleanly, so the
+                        # chain advances rather than abandoning every model behind
+                        # it. This is why a single bad generation used to look like
+                        # "the AI is down": the primary spent its daily quota, the
+                        # fallback returned bad JSON, and the raise ended the chain.
+                        last_error = RuntimeError(f"{model}: أخرج JSON غير صالح ({detail})")
+                        continue
                     raise RuntimeError(f"{model}: {detail}") from exc
                 except Exception as exc:
                     last_error = RuntimeError(f"{model}: {type(exc).__name__}: {exc}")

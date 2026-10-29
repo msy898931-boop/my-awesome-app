@@ -125,9 +125,13 @@ class Settings:
         )
     )
     # Reasoning models spend tokens thinking before they emit content, so the
-    # budget has to cover both. Too small a cap returns an empty message.
+    # budget has to cover both, and the reply is emitted *after* the scratchpad.
+    # Measured against `openai/gpt-oss-20b` with a full fact sheet: 3000 returns
+    # a 400 `json_validate_failed` (the JSON is cut mid-object), 6000 returns
+    # valid JSON twice in a row at ~2250 completion tokens. 3000 was the reason
+    # the fallback model never answered in production.
     groq_max_tokens: int = field(
-        default_factory=lambda: int(os.environ.get("GROQ_MAX_TOKENS", "3000"))
+        default_factory=lambda: int(os.environ.get("GROQ_MAX_TOKENS", "6000"))
     )
 
     # Kraken (PAXG) leads: it is spot-linked gold, so it sits far closer to the
