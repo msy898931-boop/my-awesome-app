@@ -1739,3 +1739,433 @@ def test_bot_starts_ayzr_when_the_flag_is_set(tmp_path, monkeypatch):
     )
     bot._start_ayzr()
     assert started == ["x"]
+
+
+# ── AYZR as its own service: its own token, chat, and health ─────────────
+
+
+class _Recorder:
+    """A fake Telegram that records calls and answers like the real one."""
+
+    def __init__(self):
+        self.sent: list[tuple[str, str]] = []
+        self.keyboards: list[dict] = []
+        self.callbacks: list[str] = []
+        self.commands: list[list] = []
+        self.typing_calls: list[str] = []
+        self.updates_queue: list[list[dict]] = []
+
+    def send(self, chat_id, text, markdown=True, keyboard=None):
+        self.sent.append((str(chat_id), text))
+        self.keyboards.append(keyboard or {})
+        return True
+
+    def answer_callback(self, callback_id, text=""):
+        self.callbacks.append(callback_id)
+        return True
+
+    def typing(self, chat_id):
+        self.typing_calls.append(str(chat_id))
+        return True
+
+    def set_commands(self, commands):
+        self.commands.append(list(commands))
+        return True
+
+    def updates(self, offset=None, timeout=0):
+        return self.updates_queue.pop(0) if self.updates_queue else []
+
+
+def _ayzr_bot(tmp_path, monkeypatch, *, token="tok", chat="42", enabled=False, **env):
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("AYZR_TELEGRAM_BOT_TOKEN", token)
+    monkeypatch.setenv("AYZR_TELEGRAM_CHAT_ID", chat)
+    monkeypatch.setenv("AYZR_ENABLED", "1" if enabled else "0")
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    settings = AyzrSettings()
+    tg = _Recorder() if token else None
+    return AyzrBot(settings, tg=tg, state_path=tmp_path / "bot_state.json")
+
+
+def test_ayzr_bot_has_its_own_token_not_the_bots(tmp_path, monkeypatch):
+    """AYZR must never borrow the main bot's token — that is the whole point."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "main-bot-token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    b = _ayzr_bot(tmp_path, monkeypatch, token="ayzr-token", chat="42")
+    assert b.settings.telegram_token == "ayzr-token"
+    assert b.chat_id == "42"
+    # A real transport is built from AYZR's token, not the bot's.
+    from goldbot.telegram.client import Telegram
+
+    assert Telegram(b.settings.telegram_token).token == "ayzr-token"
+    assert b.settings.telegram_token != "main-bot-token"
+
+
+def test_ayzr_telegram_ready_needs_both_token_and_chat(tmp_path, monkeypatch):
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("AYZR_TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.delenv("AYZR_TELEGRAM_CHAT_ID", raising=False)
+    assert AyzrSettings().telegram_ready is False
+    monkeypatch.setenv("AYZR_TELEGRAM_CHAT_ID", "42")
+    assert AyzrSettings().telegram_ready is True
+
+
+def test_ayzr_bot_serves_only_its_own_chat(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch, chat="42")
+    assert b._authorized("42") is True
+    assert b._authorized("999") is False
+    assert b._authorized("") is False
+
+
+def test_ayzr_bot_without_token_runs_headless(tmp_path, monkeypatch):
+    """No token: AYZR still builds, has no transport, and never crashes."""
+    b = _ayzr_bot(tmp_path, monkeypatch, token="", chat="")
+    assert b.tg is None
+    assert b.settings.telegram_ready is False
+    # handle_updates with no transport is a no-op, not a crash.
+    b.handle_updates(timeout=0)
+
+
+def test_ayzr_resolve_maps_labels_and_commands():
+    from goldbot.ayzr.bot import _resolve
+
+    assert _resolve("/ayzr") == "analyse"
+    assert _resolve("ayzr") == "analyse"
+    assert _resolve("🤖 تحليل AYZR") == "analyse"
+    assert _resolve("📒 الدفتر") == "report"
+    assert _resolve("دفتري") == "report"
+    assert _resolve("🔄 تحديث") == "resolve"
+    assert _resolve("/start") == "help"
+    assert _resolve("شي غريب") == "شي غريب"
+
+
+def test_ayzr_bot_report_sends_the_journal(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    b._respond("42", "report")
+    assert len(b.tg.sent) == 1
+    chat, body = b.tg.sent[0]
+    assert chat == "42"
+    assert "دفتر" in body or "AYZR" in body
+
+
+def test_ayzr_bot_resolve_reports_the_count(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    b._respond("42", "resolve")
+    assert "حُسمت" in b.tg.sent[0][1]
+
+
+def test_ayzr_bot_help_pins_its_own_panel(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    b._respond("42", "help")
+    assert len(b.tg.sent) == 2
+    # The second message carries the persistent reply keyboard.
+    assert "keyboard" in b.tg.keyboards[1]
+
+
+def test_ayzr_bot_unknown_command_still_answers(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    b._respond("42", "xyz")
+    assert "غير معروف" in b.tg.sent[0][1]
+
+
+def test_ayzr_bot_handle_updates_routes_and_persists_offset(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    b.tg.updates_queue.append(
+        [
+            {
+                "update_id": 7,
+                "message": {"chat": {"id": 42}, "text": "/دفتري"},
+            }
+        ]
+    )
+    b.handle_updates(timeout=0)
+    assert b._offset == 8
+    assert b.state_path.exists()
+    assert "دفتر" in b.tg.sent[0][1]
+
+
+def test_ayzr_bot_drops_a_stranger(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch, chat="42")
+    b.tg.updates_queue.append([{"update_id": 1, "message": {"chat": {"id": 999}, "text": "/ayzr"}}])
+    b.handle_updates(timeout=0)
+    assert b.tg.sent == []
+    assert b._offset == 2
+
+
+def test_ayzr_bot_hands_a_callback_to_its_engine(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    b.tg.updates_queue.append(
+        [
+            {
+                "update_id": 3,
+                "callback_query": {
+                    "id": "cb1",
+                    "data": "report",
+                    "message": {"chat": {"id": 42}},
+                },
+            }
+        ]
+    )
+    b.handle_updates(timeout=0)
+    assert b.tg.callbacks == ["cb1"]
+    assert b.tg.sent
+
+
+def test_ayzr_bot_offset_survives_a_restart(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    b.tg.updates_queue.append([{"update_id": 100, "message": {"chat": {"id": 42}, "text": "x"}}])
+    b.handle_updates(timeout=0)
+    b2 = _ayzr_bot(tmp_path, monkeypatch)
+    assert b2._offset == 101
+
+
+def test_ayzr_bot_does_not_start_the_runner_unless_asked(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch, enabled=False)
+    started: list[str] = []
+    monkeypatch.setattr(
+        "goldbot.ayzr.runner.ShadowRunner.start_thread", lambda self: started.append("x")
+    )
+    b._start_runner()
+    assert started == []
+
+
+def test_ayzr_bot_starts_the_runner_when_enabled(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch, enabled=True)
+    started: list[str] = []
+    monkeypatch.setattr(
+        "goldbot.ayzr.runner.ShadowRunner.start_thread", lambda self: started.append("x")
+    )
+    b._start_runner()
+    assert started == ["x"]
+
+
+def test_ayzr_health_is_its_own_document(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    status = b.health_status()
+    assert status["service"] == "ayzr"
+    assert status["status"] == "ok"
+    assert "runner_enabled" in status
+    assert "telegram" in status
+
+
+def test_ayzr_registers_its_own_commands(tmp_path, monkeypatch):
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    b._register_commands()
+    names = [c[0] for c in b.tg.commands[0]]
+    assert "ayzr" in names
+    assert "resolve" in names
+
+
+def test_ayzr_bot_uses_its_own_state_path(tmp_path, monkeypatch):
+    """The state file lives under AYZR's data root, never the bot's."""
+    b = _ayzr_bot(tmp_path, monkeypatch)
+    assert "ayzr" in str(b.state_path)
+
+
+def test_ayzr_cli_bot_subcommand_starts_the_service(tmp_path, monkeypatch):
+    """`ayzr bot` runs the standalone service, not a single pass."""
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    started: list[str] = []
+    monkeypatch.setattr("goldbot.ayzr.bot.AyzrBot.run_forever", lambda self: started.append("x"))
+    assert cli.main(["bot"]) == 0
+    assert started == ["x"]
+
+
+def test_ayzr_module_entrypoint_is_runnable(tmp_path, monkeypatch):
+    """`python -m goldbot.ayzr` must be a real entrypoint, not just a module.
+
+    Running it is what a host's start command does, so the test does that:
+    ``run_module`` executes ``__main__`` with ``run_forever`` stubbed, which is
+    the same seam the CLI test uses.
+    """
+    import runpy
+
+    import pytest
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setattr("goldbot.ayzr.bot.AyzrBot.run_forever", lambda self: None)
+    # The module ends in ``sys.exit(main())``, so a clean exit is the success
+    # signal — ``run_module`` runs the file the way ``python -m`` does.
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("goldbot.ayzr", run_name="__main__", alter_sys=True)
+    assert exc.value.code == 0
+
+
+def test_ayzr_bot_analyse_sends_a_decision(tmp_path, monkeypatch):
+    """The 🤖 button is a full pass: read, ask, validate, journal, then a card."""
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+    from goldbot.ayzr.engine import Run
+    from goldbot.ayzr.read import Read
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("AYZR_TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("AYZR_TELEGRAM_CHAT_ID", "42")
+    rec = _Recorder()
+    bot = AyzrBot(AyzrSettings(), tg=rec, state_path=tmp_path / "s.json")
+    fake = Run(read=Read(series={"M15": 1.0}, facts=_facts()), decision=_decision())
+    monkeypatch.setattr(bot.engine, "run", lambda **k: fake)
+    bot._respond("42", "🤖 تحليل AYZR")
+    assert rec.typing_calls == ["42"]
+    assert len(rec.sent) == 1
+    assert rec.sent[0][0] == "42"
+
+
+def test_ayzr_bot_analyse_reports_a_bad_read(tmp_path, monkeypatch):
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+    from goldbot.ayzr.engine import Run
+    from goldbot.ayzr.read import Read
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("AYZR_TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("AYZR_TELEGRAM_CHAT_ID", "42")
+    rec = _Recorder()
+    bot = AyzrBot(AyzrSettings(), tg=rec, state_path=tmp_path / "s.json")
+    bad = Run(read=Read(facts={}, errors=["تعذّر جلب الشريط"]))
+    monkeypatch.setattr(bot.engine, "run", lambda **k: bad)
+    bot._respond("42", "analyse")
+    assert "تعذّر قراءة السوق" in rec.sent[0][1]
+
+
+def test_ayzr_bot_survives_a_telegram_error_in_a_screen(tmp_path, monkeypatch):
+    """A send failure must be swallowed, not kill the loop."""
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+    from goldbot.telegram.client import TelegramError
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("AYZR_TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("AYZR_TELEGRAM_CHAT_ID", "42")
+
+    class Angry(_Recorder):
+        def send(self, *a, **k):
+            raise TelegramError("boom")
+
+    bot = AyzrBot(AyzrSettings(), tg=Angry(), state_path=tmp_path / "s.json")
+    bot._respond("42", "report")  # must not raise
+
+
+def test_ayzr_bot_run_forever_is_headless_without_a_token(tmp_path, monkeypatch):
+    """No token: the loop still starts, and the runner is what matters."""
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.delenv("AYZR_TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("AYZR_TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.delenv("PORT", raising=False)
+    monkeypatch.setenv("AYZR_ENABLED", "0")
+    bot = AyzrBot(AyzrSettings(), state_path=tmp_path / "s.json")
+    ticks = {"n": 0}
+
+    def stop_after_a_tick(*_a, **_k):
+        ticks["n"] += 1
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("goldbot.ayzr.bot.time.sleep", stop_after_a_tick)
+    with pytest.raises(KeyboardInterrupt):
+        bot.run_forever()
+    assert ticks["n"] == 1
+
+
+def test_ayzr_bot_run_forever_registers_and_polls(tmp_path, monkeypatch):
+    """With a token: it registers commands, pins the panel, and polls once."""
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("AYZR_TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("AYZR_TELEGRAM_CHAT_ID", "42")
+    monkeypatch.delenv("PORT", raising=False)
+    rec = _Recorder()
+    bot = AyzrBot(AyzrSettings(), tg=rec, state_path=tmp_path / "s.json")
+
+    def stop(*_a, **_k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(bot, "handle_updates", stop)
+    with pytest.raises(KeyboardInterrupt):
+        bot.run_forever()
+    assert rec.commands  # /ayzr and friends published
+    assert any(k for k in rec.keyboards)  # the panel was pinned
+
+
+def test_ayzr_start_health_opens_a_port_and_self_ping(tmp_path, monkeypatch):
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("PORT", "18080")
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://ayzr.example")
+    opened: list[int] = []
+    pinged: list[str] = []
+    monkeypatch.setattr(
+        "goldbot.health.start_health_server", lambda port, status: opened.append(port)
+    )
+    monkeypatch.setattr("goldbot.health.start_self_ping", lambda url, *a: pinged.append(url))
+    bot = AyzrBot(AyzrSettings(), tg=_Recorder(), state_path=tmp_path / "s.json")
+    bot._start_health()
+    assert opened == [18080]
+    assert pinged == ["https://ayzr.example"]
+
+
+def test_ayzr_start_health_ignores_a_bad_port(tmp_path, monkeypatch):
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("PORT", "not-a-port")
+    called: list[str] = []
+    monkeypatch.setattr(
+        "goldbot.health.start_health_server", lambda port, status: called.append("x")
+    )
+    bot = AyzrBot(AyzrSettings(), tg=_Recorder(), state_path=tmp_path / "s.json")
+    bot._start_health()
+    assert called == []
+
+
+def test_ayzr_install_panel_needs_a_chat(tmp_path, monkeypatch):
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.delenv("AYZR_TELEGRAM_CHAT_ID", raising=False)
+    rec = _Recorder()
+    bot = AyzrBot(AyzrSettings(), tg=rec, state_path=tmp_path / "s.json")
+    bot._install_panel()
+    assert rec.sent == []
+
+
+def test_ayzr_start_runner_survives_a_broken_runner(tmp_path, monkeypatch):
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("AYZR_ENABLED", "1")
+
+    def boom(self):
+        raise RuntimeError("no thread for you")
+
+    monkeypatch.setattr("goldbot.ayzr.runner.ShadowRunner.start_thread", boom)
+    bot = AyzrBot(AyzrSettings(), tg=_Recorder(), state_path=tmp_path / "s.json")
+    bot._start_runner()  # must not raise
+
+
+def test_ayzr_bot_state_load_tolerates_a_corrupt_file(tmp_path, monkeypatch):
+    from goldbot.ayzr.bot import AyzrBot
+    from goldbot.ayzr.config import AyzrSettings
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    state = tmp_path / "s.json"
+    state.write_text("{ not json")
+    bot = AyzrBot(AyzrSettings(), tg=_Recorder(), state_path=state)
+    assert bot._offset is None

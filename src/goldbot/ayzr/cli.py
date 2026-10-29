@@ -9,6 +9,9 @@ default. Every subcommand is usable on its own:
     model call, so the outcome side costs nothing.
   * ``loop``    — the shadow runner: a pass per bar, until interrupted. This is
     what makes the one-month test a test.
+  * ``bot``     — AYZR as its own service: its own Telegram surface, its own
+    shadow runner, its own health port. The same thing ``python -m goldbot.ayzr``
+    runs, offered here so one module owns every AYZR entrypoint.
   * ``journal`` — the raw records, for inspection.
 
 Usage::
@@ -16,12 +19,14 @@ Usage::
     PYTHONPATH=src python3 -m goldbot.ayzr.cli analyse
     PYTHONPATH=src python3 -m goldbot.ayzr.cli report
     PYTHONPATH=src python3 -m goldbot.ayzr.cli loop
+    PYTHONPATH=src python3 -m goldbot.ayzr.cli bot
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 
 from .cards import format_decision, format_report
@@ -39,7 +44,7 @@ def _parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="analyse",
-        choices=["analyse", "analyze", "report", "resolve", "journal", "loop"],
+        choices=["analyse", "analyze", "report", "resolve", "journal", "loop", "bot"],
         help="what to do",
     )
     p.add_argument("--no-ai", action="store_true", help="skip the model, resolve only")
@@ -126,6 +131,19 @@ def main(argv: list[str] | None = None) -> int:
             runner.run_forever()
         except KeyboardInterrupt:
             print("توقّف.")
+        return 0
+
+    if args.command == "bot":
+        # AYZR as a service: its own Telegram, its own runner, its own health
+        # port. Imported here so the lighter subcommands never pay for it.
+        from .bot import AyzrBot
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format="[%(asctime)s] %(message)s",
+            datefmt="%H:%M:%S",
+        )
+        AyzrBot(settings).run_forever()
         return 0
 
     # journal

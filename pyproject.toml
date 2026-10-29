@@ -21,6 +21,7 @@ dev = [
 
 [project.scripts]
 goldbot = "goldbot.cli:main"
+ayzr = "goldbot.ayzr.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -44,7 +45,7 @@ source = ["goldbot", "goldkit"]
 branch = false
 
 [tool.coverage.report]
-# The floor sits a point under the measured 97% so ordinary refactoring does not
+# The floor sits a point under the measured 98% so ordinary refactoring does not
 # redden CI, while a real drop — a whole module losing its tests — does. Raise it
 # as coverage rises; never lower it to make a red run green.
 fail_under = 96

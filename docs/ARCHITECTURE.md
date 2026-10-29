@@ -230,4 +230,15 @@ python -m goldbot.cli backtest    # the historical study
 python -m goldbot.cli study       # the deep study (metrics, windows, control)
 ```
 
+AYZR, the separate AI-first engine, runs from its own entrypoints and shares
+nothing but the read-only market layer:
+
+```bash
+python -m goldbot.ayzr.cli analyse   # one pass, printed as a card
+python -m goldbot.ayzr.cli loop      # the shadow runner, one pass per bar
+python -m goldbot.ayzr               # AYZR as its own service (own bot, health)
+```
+
+See [AYZR.md](AYZR.md) for the engine itself.
+
 Or as a container — see the Docker section of the [README](../README.md).

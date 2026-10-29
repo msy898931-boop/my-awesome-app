@@ -83,11 +83,38 @@ PYTHONPATH=src python3 -m goldbot.ayzr.cli report
 
 # settle open signals against the bars that formed — no model call
 PYTHONPATH=src python3 -m goldbot.ayzr.cli resolve
+
+# the shadow runner: one pass per bar, until interrupted
+PYTHONPATH=src python3 -m goldbot.ayzr.cli loop
+
+# AYZR as its own service: its own Telegram, its own runner, its own health port
+PYTHONPATH=src python3 -m goldbot.ayzr
 ```
 
-In Telegram, AYZR has its own row on the panel: **🤖 تحليل AYZR** runs a full
-pass, **📒 دفتر AYZR** shows the journal report. Both are reached only through
-the `ayzr:` namespace, so an AYZR button can never collide with a bot command.
+### Its own bot, not the bot's
+
+AYZR can post to a **second Telegram bot of its own**, in a chat of its own.
+That is the point of a shadow test: a reading must never be confused with the
+card the bot it shadows just sent. Point the service at a second bot with its
+own token and chat, and run it with `python -m goldbot.ayzr` (or the `ayzr`
+console script):
+
+| Input | What it is |
+|-------|------------|
+| `AYZR_TELEGRAM_BOT_TOKEN` | A **second** bot's token. Never falls back to `TELEGRAM_BOT_TOKEN` — a shared token would post both engines into one chat. |
+| `AYZR_TELEGRAM_CHAT_ID` | AYZR's own chat. Both are needed; a token with no chat is treated as no surface, and AYZR runs headless. |
+| `AYZR_POLL_SECONDS` | Its own `getUpdates` cadence. Default `60`. |
+
+The service answers `/ayzr`, `/دفتري`, and `/resolve`, pins its own panel, and
+opens its own health port on `PORT` — with a `service: "ayzr"` field, so a
+monitor can tell the two engines apart when one of them is down. Its command
+offset lives in its own state file under `AYZR_DATA_DIR`, so the two loops
+never consume each other's updates.
+
+In the **main** bot, AYZR also has its own row on the panel: **🤖 تحليل AYZR**
+runs a full pass, **📒 دفتر AYZR** shows the journal report. Both are reached
+only through the `ayzr:` namespace, so an AYZR button can never collide with a
+bot command.
 
 ## What it needs
 
@@ -96,7 +123,8 @@ Only a key. Everything else has a working default.
 | Input | Required? | What it is |
 |-------|-----------|------------|
 | `AYZR_AI_KEY` | recommended | A **second** free Groq key, so AYZR's calls cannot touch the bot's daily quota. Falls back to `GROQ_API_KEY` if unset, so AYZR works out of the box. |
-| `AYZR_DATA_DIR` | no | Where AYZR keeps its journal and quota counter. Defaults to `<GOLDBOT_DATA_DIR>/ayzr` or `.goldbot/ayzr`. |
+| `AYZR_DATA_DIR` | no | Where AYZR keeps its journal, quota counter, and its own state file. Defaults to `<GOLDBOT_DATA_DIR>/ayzr` or `.goldbot/ayzr`. |
+| `AYZR_ENABLED` | no | Set to `1` to start the automatic per-bar pass. Off by default; the CLI and the panel work without it. |
 | `AYZR_TF` | no | The frame AYZR signals on. Default `M15`. |
 | `AYZR_CONTEXT_TFS` | no | Frames read for context. Default `M15,M30,H1,H4`. |
 | `AYZR_MIN_RR` | no | AYZR's own reward-to-risk floor. Default `2.0`. |
@@ -104,6 +132,17 @@ Only a key. Everything else has a working default.
 | `AYZR_AI_DAILY_CAP` | no | AYZR's own per-day ceiling. Default `24`. |
 
 The market data itself is keyless (Kraken/Binance), as it is for the bot.
+
+### Deploying it
+
+`render.yaml` carries a second web service, `goldbot-ayzr`, with its own disk
+and its own secrets, so AYZR can be restarted or stopped without touching the
+bot. It is **not** free: Render's free tier is one web service and 750
+instance-hours a month, and two always-on services need 1440. Either run the
+second service on a paid plan, or run AYZR as a cron that calls
+`python -m goldbot.ayzr.cli loop --once` every 15 minutes — a bar an hour of
+boot time, which fits the free allowance. Delete the service block to keep
+AYZR on the bot's host.
 
 ## The one-month shadow test
 

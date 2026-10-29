@@ -49,3 +49,50 @@ services:
       # per model *and* per conversation, and sharing the bot's key makes the
       # two engines compete for one allowance. Set it in the dashboard:
       #   AYZR_AI_KEY   (falls back to GROQ_API_KEY when unset)
+
+  # ── AYZR, as its own service ────────────────────────────────────────────
+  # A second web service, not a mode of the one above. The month-long shadow
+  # test wants a chat of its own, a key of its own, a disk of its own, and a
+  # health endpoint of its own, so a reading can never be confused with the bot
+  # it shadows — and AYZR can be restarted, or stopped, without touching the bot.
+  #
+  # This is NOT free. Render's free tier is one web service and 750
+  # instance-hours a month; two always-on services need 1440, and the disk below
+  # needs a paid instance anyway. Either run this one on a paid plan, or drop the
+  # disk and the web type and run AYZR as a cron that calls
+  # `python -m goldbot.ayzr.cli loop --once` every 15 minutes — a bar an hour of
+  # boot time, which fits the free allowance. Left here as the shape a real
+  # deployment takes; delete it if AYZR is to share the bot's host.
+  - type: web
+    name: goldbot-ayzr
+    runtime: python
+    plan: starter
+    region: frankfurt
+    buildCommand: pip install -e .
+    startCommand: python -m goldbot.ayzr
+    healthCheckPath: /health
+    autoDeploy: true
+    # Its own disk, so the month's journal survives a restart. If a separate
+    # disk is not wanted, point AYZR_DATA_DIR at the bot's mount and keep it
+    # under its own `ayzr/` subfolder.
+    disk:
+      name: ayzr-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: AYZR_DATA_DIR
+        value: /var/data
+      - key: AYZR_ENABLED
+        value: "1"
+      # Secrets set in this service's dashboard, never here:
+      #   AYZR_TELEGRAM_BOT_TOKEN  — a *second* bot, its own chat
+      #   AYZR_TELEGRAM_CHAT_ID
+      #   AYZR_AI_KEY              — AYZR's own Groq key
+      - key: AYZR_TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: AYZR_TELEGRAM_CHAT_ID
+        sync: false
+      - key: AYZR_AI_KEY
+        sync: false

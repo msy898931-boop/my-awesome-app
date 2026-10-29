@@ -17,6 +17,7 @@ pick better trades than the rules do — and better than a coin? The journal, wi
 its matched random control, is what will answer it.
 """
 
+from .bot import HELP, AyzrBot
 from .cards import format_decision, format_report
 from .config import AyzrSettings
 from .decide import Decision, decide, validate_trade
@@ -35,6 +36,8 @@ from .report import Report, build_report, compute, verdict
 from .runner import ShadowRunner, interval_for
 
 __all__ = [
+    "HELP",
+    "AyzrBot",
     "AyzrSettings",
     "Decision",
     "Engine",

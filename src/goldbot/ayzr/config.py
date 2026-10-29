@@ -118,11 +118,42 @@ class AyzrSettings:
     # default, since a pass reads the tape the frame it signals on defines.
     interval_seconds: int = field(default_factory=lambda: _int("AYZR_INTERVAL_SECONDS", 0))
 
+    # ── AYZR's own Telegram surface ───────────────────────────────────────
+    # AYZR is a service in its own right, so it talks to its *own* bot, in its
+    # own chat, with its own token. Nothing here falls back to the main bot's
+    # token: a shared token would mean the two engines post into one chat and a
+    # shadow test could not be read apart from the bot it shadows. Both are
+    # optional — with neither, AYZR still runs headless from the CLI.
+    telegram_token: str = field(
+        default_factory=lambda: os.environ.get("AYZR_TELEGRAM_BOT_TOKEN", "").strip()
+    )
+    telegram_chat: str = field(
+        default_factory=lambda: os.environ.get("AYZR_TELEGRAM_CHAT_ID", "").strip()
+    )
+    # AYZR's own poll cadence for ``getUpdates``. Kept separate from the main
+    # bot's: AYZR has fewer commands and a slower decision, so it can afford a
+    # lazier long-poll.
+    poll_seconds: int = field(default_factory=lambda: _int("AYZR_POLL_SECONDS", 60))
+
+    # AYZR's private state file — its command offset and any preference it
+    # remembers. Under AYZR's own root, so it can never be read as the bot's.
+    state_path: Path = field(default_factory=lambda: _data_root() / "bot_state.json")
+
     data_dir: Path = field(default_factory=_data_root)
 
     @property
     def ai_enabled(self) -> bool:
         return bool(self.ai_key.strip())
+
+    @property
+    def telegram_ready(self) -> bool:
+        """Whether AYZR can actually talk: it needs both a token and a chat.
+
+        A token with no chat id cannot send (Telegram answers a bare 400), so a
+        half-configured surface is treated as no surface — the bot runs headless
+        rather than failing on its first message.
+        """
+        return bool(self.telegram_token.strip() and self.telegram_chat.strip())
 
     @property
     def log_path(self) -> Path:
