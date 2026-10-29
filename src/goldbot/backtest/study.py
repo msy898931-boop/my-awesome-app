@@ -93,6 +93,7 @@ def run_study(
             "windows": 0,
             "metrics": metrics([]),
             "equity_curve": [],
+            "setup_curves": {},
             "consistency": {"windows": 0, "positive": 0, "share": None, "thin": 0},
             "control": None,
             "by_direction": {},
@@ -110,9 +111,13 @@ def run_study(
 
     by_direction = {d: metrics([t for t in trades if t.direction == d]) for d in ("buy", "sell")}
     by_direction = {k: v for k, v in by_direction.items() if v["n"]}
-    by_setup = {
-        s: metrics([t for t in trades if t.setup == s]) for s in sorted({t.setup for t in trades})
-    }
+    setups = sorted({t.setup for t in trades})
+    by_setup = {s: metrics([t for t in trades if t.setup == s]) for s in setups}
+    # One curve per setup, not just the pooled one: the headline curve averages
+    # three different bets, so a setup that climbs while another bleeds is
+    # invisible in it. The pooled curve is the sum of these, and seeing them
+    # apart is the whole reason the per-setup verdict exists.
+    setup_curves = {s: equity_curve([t for t in trades if t.setup == s]) for s in setups}
 
     span_days = round((primary[-1].time - primary[0].time) / 86400) if len(primary) > 1 else 0
     # The calendar the sample actually covers. "833 days" says nothing about
@@ -146,6 +151,7 @@ def run_study(
         "windows": window_count,
         "metrics": metrics(trades),
         "equity_curve": equity_curve(trades),
+        "setup_curves": setup_curves,
         "window_metrics": block_metrics,
         "consistency": consistency(blocks),
         "control": verdict,

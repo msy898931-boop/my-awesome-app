@@ -139,6 +139,32 @@ def test_study_svg_flag_writes_a_file(patched, monkeypatch, capsys, tmp_path):
     assert "حُفظ المنحنى" in capsys.readouterr().out
 
 
+def test_study_chart_setups_prints_one_curve_per_setup(patched, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    assert cli.main(["study", "--chart-setups"]) == 0
+    out = capsys.readouterr().out
+    # Both setup titles appear, each with its own curve — not the pooled one twice.
+    assert "bos" in out and "sweep" in out
+
+
+def test_study_svg_dir_writes_pooled_and_per_setup(patched, monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    out_dir = tmp_path / "curves"
+    assert cli.main(["study", "--svg-dir", str(out_dir)]) == 0
+    files = sorted(p.name for p in out_dir.iterdir())
+    # all + one per setup, and the names come from the labels (deterministic).
+    assert files == sorted(f"{name}.svg" for name in ("all", "bos", "sweep"))
+    for path in out_dir.iterdir():
+        body = path.read_text(encoding="utf-8")
+        assert body.startswith("<svg") and "<polyline" in body
+
+
 def _study_result() -> dict:
     """A minimal but *complete* study dict: the real metric block, a short curve."""
     from goldbot.backtest.engine import Trade
@@ -158,6 +184,19 @@ def _study_result() -> dict:
             r_multiple=r,
         )
         for i, r in enumerate((1.0, -1.0, 2.0))
+    ] + [
+        Trade(
+            index=9,
+            time=1_700_000_000 + 9 * 3600,
+            direction="sell",
+            entry=2000.0,
+            stop=2010.0,
+            target=1980.0,
+            rr=2.0,
+            setup="sweep",
+            outcome="loss",
+            r_multiple=-1.0,
+        )
     ]
     return {
         "symbol": "XAUUSD",
@@ -166,12 +205,13 @@ def _study_result() -> dict:
         "span_days": 3,
         "windows": 1,
         "metrics": metrics(trades),
-        "equity_curve": [1.0, 0.0, 2.0],
+        "equity_curve": [1.0, 0.0, 2.0, 1.0],
+        "setup_curves": {"bos": [1.0, 0.0, 2.0], "sweep": [-1.0]},
         "consistency": {"windows": 1, "positive": 1, "share": 1.0, "thin": 0},
         "control": None,
         "setup_control": {},
-        "by_direction": {"buy": metrics(trades)},
-        "by_setup": {"bos": metrics(trades)},
+        "by_direction": {"buy": metrics(trades[:3]), "sell": metrics(trades[3:])},
+        "by_setup": {"bos": metrics(trades[:3]), "sweep": metrics(trades[3:])},
         "notes": ["اختبار"],
     }
 

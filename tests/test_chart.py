@@ -57,6 +57,11 @@ def test_the_header_counts_filled_trades():
     assert "40 صفقة" in render_curve(_ramp(40))
 
 
+def test_a_title_names_the_curve_so_several_can_be_told_apart():
+    text = render_curve(_ramp(), title="استمرار BOS")
+    assert "استمرار BOS" in text
+
+
 def test_a_steep_jump_draws_the_vertical_connector():
     # A big move inside one column: the trace must connect with │, not a gap.
     curve = [-50.0, -50.0, 50.0, 50.0]

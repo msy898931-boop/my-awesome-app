@@ -37,6 +37,16 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   denominator is explained rather than mysterious, and the sample now carries
   its **calendar dates** (`2024-07-18 → 2026-10-29`), because "833 days"
   says nothing about which 833 the result was measured in.
+### Added
+- **A curve per setup, not just the pooled one.** `cli study --chart-setups`
+  prints one text curve for each setup and `--svg-dir DIR` writes the pooled
+  curve plus one SVG per setup (`all.svg`, `استمرار-BOS….svg`, …), with the
+  file names derived from the labels so a rerun overwrites rather than
+  duplicates. The pooled curve averages three different bets; seeing them
+  apart is what shows a setup that climbs while another bleeds — the shapes
+  match the verdicts (BOS climbs, CHoCH oscillates, the sweep spikes then
+  bleeds). The per-setup finals sum exactly to the pooled final, which the
+  suite asserts.
 
 ### Fixed
 - **A rate-limited calendar silently withheld every trade idea.** The economic

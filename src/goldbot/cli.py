@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import re
 import sys
 
 from .config import load_settings
@@ -33,7 +35,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tf", default="", help="primary frame for the study (H1, H4, …)")
     parser.add_argument("--windows", type=int, default=5, help="out-of-sample windows")
     parser.add_argument("--chart", action="store_true", help="print the equity curve as text")
+    parser.add_argument(
+        "--chart-setups", action="store_true", help="print one text curve per setup"
+    )
     parser.add_argument("--svg", default="", help="write the equity curve to this SVG file")
+    parser.add_argument("--svg-dir", default="", help="write pooled + per-setup SVGs to this dir")
     args = parser.parse_args(argv)
 
     settings = load_settings()
@@ -114,16 +120,47 @@ def main(argv: list[str] | None = None) -> int:
             if args.chart:
                 print()
                 print(render_curve(study["equity_curve"]))
+            if args.chart_setups:
+                for setup, curve in study["setup_curves"].items():
+                    print()
+                    print(render_curve(curve, title=setup))
         if args.svg:
             # utf-8 explicitly: the default locale on a bare host can be ascii,
             # which would refuse the SVG's own text labels.
             with open(args.svg, "w", encoding="utf-8") as handle:
                 handle.write(render_svg(study["equity_curve"]))
             print(f"حُفظ المنحنى في {args.svg}")
+        if args.svg_dir:
+            written = _write_setup_svgs(study, args.svg_dir)
+            print(f"حُفظت {written} منحنيات في {args.svg_dir}")
         return 0
 
     parser.print_help()
     return 1
+
+
+def _slug(name: str) -> str:
+    """A setup name as a safe, readable filename stem."""
+    cleaned = re.sub(r"[^\w\u0600-\u06ff]+", "-", name, flags=re.UNICODE).strip("-")
+    return cleaned[:60] or "setup"
+
+
+def _write_setup_svgs(study: dict, out_dir: str) -> int:
+    """Write the pooled curve and one SVG per setup into ``out_dir``.
+
+    The file names come from the setup labels, so the same run twice produces
+    the same files. Returns the number written.
+    """
+    from .backtest.chart import render_svg
+
+    os.makedirs(out_dir, exist_ok=True)
+    curves = [("all", study["equity_curve"])]
+    curves += list(study.get("setup_curves", {}).items())
+    for name, curve in curves:
+        path = os.path.join(out_dir, f"{_slug(name)}.svg")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(render_svg(curve, title=f"Equity curve (R) — {name}"))
+    return len(curves)
 
 
 if __name__ == "__main__":

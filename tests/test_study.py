@@ -107,6 +107,25 @@ def test_run_study_returns_a_well_formed_result(monkeypatch):
     assert result["notes"]
 
 
+def test_every_setup_gets_its_own_curve(monkeypatch):
+    """The per-setup curves must exist for exactly the setups in the walk."""
+    _inject(monkeypatch)
+    result = run_study(Settings(), primary_tf="H1", window_count=4, n_control=60)
+
+    assert set(result["setup_curves"]) == set(result["by_setup"])
+    for curve in result["setup_curves"].values():
+        assert isinstance(curve, list)
+        # A curve is one running total per filled trade, so it is non-empty
+        # whenever its setup had a trade, and monotone in nothing but length.
+        assert curve or not result["by_setup"]
+
+    # The pooled curve is exactly the sum of the per-setup curves at the end:
+    # the setups partition the trades, so their finals must add to the whole.
+    if result["equity_curve"]:
+        finals = sum(c[-1] for c in result["setup_curves"].values() if c)
+        assert abs(finals - result["equity_curve"][-1]) < 1e-9
+
+
 def test_run_study_defaults_to_the_deepest_loaded_frame(monkeypatch):
     _inject(monkeypatch, frames=("M15", "H4"))
     result = run_study(Settings(), window_count=2, n_control=40)

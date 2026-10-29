@@ -43,6 +43,7 @@ def render_curve(
     width: int = 64,
     height: int = 12,
     label: str = "R",
+    title: str | None = None,
 ) -> str:
     """The cumulative-R curve as a text chart, or a named reason it is absent.
 
@@ -51,6 +52,7 @@ def render_curve(
     study is compressed rather than truncated, and the zero line is drawn
     whenever the range crosses it — the single most useful reference on an
     equity curve, since it marks the break-even the strategy must clear.
+    ``title`` names the curve (a setup, say) so several can be told apart.
     """
     if not curve:
         return "منحنى رأس المال: لا صفقات منفّذة لرسمها."
@@ -90,7 +92,8 @@ def render_curve(
                 grid[zero_row][x] = _FLAT
 
     name_w = max(len(f"{hi:+.1f}"), len(f"{lo:+.1f}"), 4)
-    lines = [f"  منحنى رأس المال (بالـ {label}) — {len(curve)} صفقة"]
+    name = f" — {title}" if title else ""
+    lines = [f"  منحنى رأس المال{name} (بالـ {label}) — {len(curve)} صفقة"]
     for r in range(height):
         tag = ""
         if r == 0:

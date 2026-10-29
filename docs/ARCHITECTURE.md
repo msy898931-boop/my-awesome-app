@@ -109,7 +109,9 @@ vanish inside the headline verdict — and the report prints that per-setup
 verdict beside its expectancy. `chart.py` draws the cumulative-R curve with no
 plotting dependency — a text chart for a terminal and a standalone SVG for a
 browser, sharing one mapping onto a grid, with the zero line drawn only when the
-curve crosses it. `research/study_control.py` runs it over the archive.
+curve crosses it. `study` emits a curve per setup as well as the pooled one, so a
+setup that climbs while another bleeds is visible instead of averaged away.
+`research/study_control.py` runs it over the archive.
 
 ### `news/` — calendar, wires, macro, blackout
 
