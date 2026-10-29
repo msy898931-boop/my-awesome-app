@@ -17,6 +17,7 @@ from goldbot.backtest.report import (
     _sortino,
     consistency,
     equity_curve,
+    equity_points,
     format_report,
     metrics,
     windows,
@@ -179,6 +180,20 @@ def test_fmt_signs_returns_but_not_proportions():
 def test_equity_curve_is_cumulative_and_ignores_unfilled():
     curve = equity_curve([_t(1.0), _unfilled(), _t(-0.5), _t(2.0)])
     assert curve == [1.0, 0.5, 2.5]
+
+
+def test_equity_points_carry_the_clock_and_sort_by_time():
+    """The time-carrying curve is the same running total, ordered oldest first.
+
+    Unlike :func:`equity_curve`, which keeps the caller's order, the points sort
+    by time — the axis of a time chart is time, so an out-of-order input must not
+    produce a curve that doubles back.
+    """
+    points = equity_points([_t(-0.5, time=30), _t(2.0, time=10), _unfilled()])
+    assert points == [(10, 2.0), (30, 1.5)]
+    # Same trades in time order give the same running total, either way round.
+    ordered = equity_points([_t(2.0, time=10), _t(-0.5, time=30)])
+    assert [v for _, v in ordered] == equity_curve([_t(2.0, time=10), _t(-0.5, time=30)])
 
 
 def test_windows_split_by_time_not_by_shuffle():

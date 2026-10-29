@@ -47,6 +47,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   match the verdicts (BOS climbs, CHoCH oscillates, the sweep spikes then
   bleeds). The per-setup finals sum exactly to the pooled final, which the
   suite asserts.
+### Added
+- **A time axis for the curve.** `cli study --chart-time` (and
+  `--chart-time-setups`) draws the cumulative-R curve against dates instead of
+  trade rank; `--svg-dir` now dates the SVG x-axis too. Rank spaces every study
+  evenly, which hides that fills cluster: twenty trades in a week and twenty
+  across a year look identical. `report.equity_points` carries the clock
+  alongside the running total, sorted oldest first, and the suite asserts the
+  dated points and the plain curve agree value for value.
 
 ### Fixed
 - **A rate-limited calendar silently withheld every trade idea.** The economic

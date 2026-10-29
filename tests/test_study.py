@@ -119,6 +119,13 @@ def test_every_setup_gets_its_own_curve(monkeypatch):
         # whenever its setup had a trade, and monotone in nothing but length.
         assert curve or not result["by_setup"]
 
+    # The time-carrying points mirror the plain curves exactly, in step.
+    assert [v for _, v in result["equity_points"]] == result["equity_curve"]
+    times = [t for t, _ in result["equity_points"]]
+    assert times == sorted(times)
+    for name, pts in result["setup_points"].items():
+        assert [v for _, v in pts] == result["setup_curves"][name]
+
     # The pooled curve is exactly the sum of the per-setup curves at the end:
     # the setups partition the trades, so their finals must add to the whole.
     if result["equity_curve"]:

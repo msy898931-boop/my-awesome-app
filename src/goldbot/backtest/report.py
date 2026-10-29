@@ -151,6 +151,22 @@ def equity_curve(trades: Sequence[Trade]) -> list[float]:
     return curve
 
 
+def equity_points(trades: Sequence[Trade]) -> list[tuple[int, float]]:
+    """``(time, cumulative R)`` after each filled trade, oldest first.
+
+    The same curve as :func:`equity_curve`, but carrying the clock. Rank hides
+    that trades cluster: twenty fills in one week and twenty across a year look
+    identical against a trade counter. Plotting against time is what shows a
+    run-up that took three months and a collapse that took three days.
+    """
+    points = []
+    cum = 0.0
+    for t in sorted(_filled(trades), key=lambda t: t.time):
+        cum += t.r_multiple
+        points.append((t.time, round(cum, 3)))
+    return points
+
+
 def windows(trades: Sequence[Trade], count: int) -> list[list[Trade]]:
     """Split filled trades into ``count`` contiguous blocks, oldest first.
 

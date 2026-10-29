@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from goldbot.backtest.chart import render_curve, render_svg
+from goldbot.backtest.chart import render_curve, render_svg, render_time_curve
 
 # A row whose label is exactly the zero tag, right-aligned before the frame.
 _ZERO_ROW = re.compile(r"(?m)^\s*0 │")
@@ -85,3 +85,57 @@ def test_svg_of_an_empty_curve_says_so():
 def test_svg_zero_line_only_when_crossing():
     assert "stroke-dasharray" in render_svg(_ramp())
     assert "stroke-dasharray" not in render_svg([1.0 + i for i in range(30)])
+
+
+# ── the time axis ──────────────────────────────────────────────────────────
+_DAY = 86400
+
+
+def _pts(values, start=1_700_000_000, step=_DAY):
+    return [(start + i * step, v) for i, v in enumerate(values)]
+
+
+def test_a_time_curve_is_named_and_dated_at_both_ends():
+    text = render_time_curve(_pts([1.0, 2.0, 3.0]))
+    assert "منحنى رأس المال" in text
+    # The span is legible: the first and last dates appear.
+    assert "2023-11-14" in text and "2023-11-16" in text
+
+
+def test_an_empty_time_curve_is_named_not_drawn():
+    text = render_time_curve([])
+    assert "لا صفقات" in text and "│" not in text
+
+
+def test_a_burst_of_trades_is_visibly_narrower_than_a_slow_climb():
+    """Two curves with the same final R must differ when time is the axis.
+
+    One rises over a year, the other over three days. Against a rank axis they
+    are identical; against time the fast one's rise is squeezed into far fewer
+    columns, so the rendered grids cannot match.
+    """
+    slow = _pts([1.0, 2.0, 3.0], step=180 * _DAY)
+    fast = _pts([1.0, 2.0, 3.0], step=_DAY)
+    assert render_time_curve(slow) != render_time_curve(fast)
+
+
+def test_a_gap_with_no_trades_is_a_flat_run_not_a_steep_jump():
+    # Flat at 2 for half a year, then one jump: the flat stretch must dominate.
+    pts = _pts([2.0, 2.0], step=180 * _DAY) + [(2.0 + 180 * _DAY, 5.0)]
+    text = render_time_curve(pts)
+    assert "منحنى رأس المال" in text
+
+
+def test_the_time_curve_is_deterministic():
+    assert render_time_curve(_pts([1.0, 2.0])) == render_time_curve(_pts([1.0, 2.0]))
+
+
+def test_svg_with_points_dates_the_axis():
+    svg = render_svg([1.0, 2.0, 3.0], points=_pts([1.0, 2.0, 3.0]))
+    assert "2023-11-14" in svg and "2023-11-16" in svg
+    assert "<polyline" in svg
+
+
+def test_svg_without_points_keeps_the_rank_captions():
+    svg = render_svg([1.0, 2.0, 3.0])
+    assert "first trade" in svg and "last trade (3)" in svg

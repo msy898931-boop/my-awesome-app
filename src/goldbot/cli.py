@@ -38,6 +38,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--chart-setups", action="store_true", help="print one text curve per setup"
     )
+    parser.add_argument(
+        "--chart-time", action="store_true", help="print the pooled curve against dates"
+    )
+    parser.add_argument(
+        "--chart-time-setups", action="store_true", help="print each setup curve against dates"
+    )
     parser.add_argument("--svg", default="", help="write the equity curve to this SVG file")
     parser.add_argument("--svg-dir", default="", help="write pooled + per-setup SVGs to this dir")
     args = parser.parse_args(argv)
@@ -108,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "study":
-        from .backtest.chart import render_curve, render_svg
+        from .backtest.chart import render_curve, render_svg, render_time_curve
         from .backtest.report import format_report
         from .backtest.study import run_study
 
@@ -124,6 +130,13 @@ def main(argv: list[str] | None = None) -> int:
                 for setup, curve in study["setup_curves"].items():
                     print()
                     print(render_curve(curve, title=setup))
+            if args.chart_time:
+                print()
+                print(render_time_curve(study["equity_points"]))
+            if args.chart_time_setups:
+                for setup, pts in study["setup_points"].items():
+                    print()
+                    print(render_time_curve(pts, title=setup))
         if args.svg:
             # utf-8 explicitly: the default locale on a bare host can be ascii,
             # which would refuse the SVG's own text labels.
@@ -148,18 +161,23 @@ def _slug(name: str) -> str:
 def _write_setup_svgs(study: dict, out_dir: str) -> int:
     """Write the pooled curve and one SVG per setup into ``out_dir``.
 
-    The file names come from the setup labels, so the same run twice produces
-    the same files. Returns the number written.
+    The x-axis is spaced by trade time (the points carry their clock), so a
+    quiet quarter and a busy week are visibly different widths. File names come
+    from the setup labels, so the same run twice produces the same files.
+    Returns the number written.
     """
     from .backtest.chart import render_svg
 
     os.makedirs(out_dir, exist_ok=True)
-    curves = [("all", study["equity_curve"])]
-    curves += list(study.get("setup_curves", {}).items())
-    for name, curve in curves:
+    curves = [("all", study["equity_curve"], study.get("equity_points"))]
+    curves += [
+        (name, curve, study.get("setup_points", {}).get(name))
+        for name, curve in study.get("setup_curves", {}).items()
+    ]
+    for name, curve, points in curves:
         path = os.path.join(out_dir, f"{_slug(name)}.svg")
         with open(path, "w", encoding="utf-8") as handle:
-            handle.write(render_svg(curve, title=f"Equity curve (R) — {name}"))
+            handle.write(render_svg(curve, title=f"Equity curve (R) — {name}", points=points))
     return len(curves)
 
 

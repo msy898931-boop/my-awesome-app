@@ -109,8 +109,12 @@ vanish inside the headline verdict — and the report prints that per-setup
 verdict beside its expectancy. `chart.py` draws the cumulative-R curve with no
 plotting dependency — a text chart for a terminal and a standalone SVG for a
 browser, sharing one mapping onto a grid, with the zero line drawn only when the
-curve crosses it. `study` emits a curve per setup as well as the pooled one, so a
-setup that climbs while another bleeds is visible instead of averaged away.
+curve crosses it. The same curve can be drawn against *trade rank* or against
+*time*: rank compresses a long study evenly, time exposes that trades cluster —
+a quarter with no fills is a flat run, a burst is a steep segment, and the two
+readings of one curve differ. `study` emits a curve per setup as well as the
+pooled one, so a setup that climbs while another bleeds is visible instead of
+averaged away.
 `research/study_control.py` runs it over the archive.
 
 ### `news/` — calendar, wires, macro, blackout

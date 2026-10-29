@@ -34,7 +34,14 @@ import time
 from ..config import Settings
 from .control import CONTROL, skill_test
 from .engine import _walk
-from .report import consistency, equity_curve, format_report, metrics, windows
+from .report import (
+    consistency,
+    equity_curve,
+    equity_points,
+    format_report,
+    metrics,
+    windows,
+)
 
 # Preference order for the walked frame, deepest sample first. Every frame the
 # bot actually reads is still loaded — the walk reads them the way live does —
@@ -93,7 +100,9 @@ def run_study(
             "windows": 0,
             "metrics": metrics([]),
             "equity_curve": [],
+            "equity_points": [],
             "setup_curves": {},
+            "setup_points": {},
             "consistency": {"windows": 0, "positive": 0, "share": None, "thin": 0},
             "control": None,
             "by_direction": {},
@@ -118,6 +127,8 @@ def run_study(
     # invisible in it. The pooled curve is the sum of these, and seeing them
     # apart is the whole reason the per-setup verdict exists.
     setup_curves = {s: equity_curve([t for t in trades if t.setup == s]) for s in setups}
+    # The same curves with their clock, so a chart can use a date axis.
+    setup_points = {s: equity_points([t for t in trades if t.setup == s]) for s in setups}
 
     span_days = round((primary[-1].time - primary[0].time) / 86400) if len(primary) > 1 else 0
     # The calendar the sample actually covers. "833 days" says nothing about
@@ -151,7 +162,9 @@ def run_study(
         "windows": window_count,
         "metrics": metrics(trades),
         "equity_curve": equity_curve(trades),
+        "equity_points": equity_points(trades),
         "setup_curves": setup_curves,
+        "setup_points": setup_points,
         "window_metrics": block_metrics,
         "consistency": consistency(blocks),
         "control": verdict,

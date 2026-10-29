@@ -57,6 +57,7 @@ python -m goldbot.cli bot         # run the polling loop
 python -m goldbot.cli backtest    # the historical study
 python -m goldbot.cli study --chart --svg curve.svg   # deep study + equity curve
 python -m goldbot.cli study --chart-setups --svg-dir curves/   # one curve per setup
+python -m goldbot.cli study --chart-time   # the pooled curve against dates, not rank
 ```
 
 Flags: `--no-ai` skips the AI layer, `--no-news` skips the news layer,
