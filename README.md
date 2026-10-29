@@ -57,6 +57,7 @@ python -m goldbot.cli card        # the Telegram card as text
 python -m goldbot.cli news        # calendar and headlines
 python -m goldbot.cli send        # send one card to the configured chat
 python -m goldbot.cli bot         # run the polling loop
+python -m goldbot.cli dual        # run the bot AND AYZR's own bot on one host
 python -m goldbot.cli backtest    # the historical study
 python -m goldbot.cli study --chart --svg curve.svg   # deep study + equity curve
 python -m goldbot.cli study --chart-setups --svg-dir curves/   # one curve per setup
@@ -218,18 +219,20 @@ nothing listening and kills it. When `PORT` is set, `goldbot.health` serves
 state. Locally there is no `PORT`, so nothing is opened and the loop behaves
 exactly as it does without the module.
 
-`render.yaml` describes a free Render web service:
+`render.yaml` describes one free Render web service that runs both bots:
 
 - Build: `pip install -e .`
-- Start: `python -m goldbot.cli bot`
-- Health check: `/health`
-- Secrets (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GROQ_API_KEY`) are set
-  in the dashboard and never committed
-- A 1 GB disk mounted at `/var/data`, with `GOLDBOT_DATA_DIR` pointed at it, so
-  the state file and the archive survive the restarts Render makes freely. The
-  state carries the per-day AI counter and the set of news already announced:
-  lose it and the cap resets on every deploy, and a restart re-fires the day's
-  alerts.
+- Start: `python -m goldbot.dual` — the bot's loop and AYZR's loop together
+- Health check: `/health` — one document, with a `bot` and an `ayzr` block
+- Secrets (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GROQ_API_KEY`, and AYZR's
+  `AYZR_TELEGRAM_BOT_TOKEN`, `AYZR_TELEGRAM_CHAT_ID`, `AYZR_AI_KEY`) are set in
+  the dashboard and never committed
+- **No disk.** Render only attaches a disk to a paid instance, and a free
+  workspace gets 750 instance-hours a month — enough for one always-on service,
+  not two. So nothing survives a restart: the per-day AI counter, the set of
+  news already announced, and AYZR's journal all reset. Durable state needs a
+  paid instance plus a disk mounted at `/var/data` with `GOLDBOT_DATA_DIR`
+  pointed at it (the block is in git history at commit `33a5d26`).
 
 A `Dockerfile` and `docker-compose.yml` are also included (see
 [Docker](#docker)) for any host that runs containers, or for running it

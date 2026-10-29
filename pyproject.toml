@@ -22,6 +22,7 @@ dev = [
 [project.scripts]
 goldbot = "goldbot.cli:main"
 ayzr = "goldbot.ayzr.cli:main"
+goldbot-dual = "goldbot.dual:main"
 
 [build-system]
 requires = ["setuptools>=68"]

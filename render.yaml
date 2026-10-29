@@ -1,3 +1,17 @@
+# One free web service runs both bots.
+#
+# Render's free tier gives a single web service and 750 instance-hours a month.
+# Two always-on services would need 1440 hours and would suspend *every* free
+# service in the workspace, and a persistent disk needs a paid instance besides.
+# So AYZR does not get a service of its own: `python -m goldbot.dual` starts the
+# bot's loop and AYZR's loop side by side in one process, each with its own
+# token, chat, journal, and AI key, over one health port.
+#
+# What this costs: there is no disk, so nothing survives a restart. The bot's
+# per-day AI counter, the events it has announced, and AYZR's journal are all
+# reset when Render recycles the instance. That is the price of free, and the
+# reason the one-month shadow test is a paid-tier exercise. Durable state needs
+# a paid instance plus the disk block (kept in git history at commit 33a5d26).
 services:
   - type: web
     name: goldbot
@@ -5,94 +19,38 @@ services:
     plan: free
     region: frankfurt
     buildCommand: pip install -e .
-    startCommand: python -m goldbot.cli bot
+    startCommand: python -m goldbot.dual
     healthCheckPath: /health
     autoDeploy: true
-    # A disk, so the bot's state outlives the process. Render restarts a free
-    # instance freely, and without this every restart forgets the per-day AI
-    # counter (the cap then resets and the free tier is spent twice over), the
-    # events already announced (a restart re-fires the day's alerts), and the
-    # accumulated candles. Free plan supports one disk per service.
-    disk:
-      name: goldbot-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.6"
-      # Everything durable lives under the mount: state file and archive.
-      - key: GOLDBOT_DATA_DIR
-        value: /var/data
       - key: GOLDBOT_ENABLE_YAHOO
         value: "0"
       - key: GOLDBOT_ENABLE_BINANCE
         value: "1"
+      # AYZR runs in this same process, on its own quota and its own journal.
+      # Its runner is started once, by the bot's `_start_ayzr`, so the dual
+      # supervisor passes `start_runner=False` to AYZR's loop.
+      - key: AYZR_ENABLED
+        value: "1"
       # Secrets are set in the Render dashboard, never in this file:
-      #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GROQ_API_KEY
+      #   TELEGRAM_BOT_TOKEN        — the main bot
+      #   TELEGRAM_CHAT_ID
+      #   GROQ_API_KEY              — the bot's key
+      #   AYZR_TELEGRAM_BOT_TOKEN   — a *second* bot, its own chat
+      #   AYZR_TELEGRAM_CHAT_ID
+      #   AYZR_AI_KEY               — AYZR's own key (falls back to GROQ_API_KEY)
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      # ── AYZR shadow test ────────────────────────────────────────────────
-      # Off until the operator turns it on. The one-month experiment is not a
-      # behaviour the bot should gain by deploying; flip AYZR_ENABLED to "1"
-      # when the test is meant to start. AYZR keeps its own journal and AI
-      # counter under AYZR_DATA_DIR, so the disk already mounted above is
-      # enough — nothing here touches the bot's state.
-      - key: AYZR_ENABLED
-        value: "0"
-      - key: AYZR_DATA_DIR
-        value: /var/data/ayzr
-      # AYZR's own key is recommended: the free tier's daily token budget is
-      # per model *and* per conversation, and sharing the bot's key makes the
-      # two engines compete for one allowance. Set it in the dashboard:
-      #   AYZR_AI_KEY   (falls back to GROQ_API_KEY when unset)
-
-  # ── AYZR, as its own service ────────────────────────────────────────────
-  # A second web service, not a mode of the one above. The month-long shadow
-  # test wants a chat of its own, a key of its own, a disk of its own, and a
-  # health endpoint of its own, so a reading can never be confused with the bot
-  # it shadows — and AYZR can be restarted, or stopped, without touching the bot.
-  #
-  # This is NOT free. Render's free tier is one web service and 750
-  # instance-hours a month; two always-on services need 1440, and the disk below
-  # needs a paid instance anyway. Either run this one on a paid plan, or drop the
-  # disk and the web type and run AYZR as a cron that calls
-  # `python -m goldbot.ayzr.cli loop --once` every 15 minutes — a bar an hour of
-  # boot time, which fits the free allowance. Left here as the shape a real
-  # deployment takes; delete it if AYZR is to share the bot's host.
-  - type: web
-    name: goldbot-ayzr
-    runtime: python
-    plan: starter
-    region: frankfurt
-    buildCommand: pip install -e .
-    startCommand: python -m goldbot.ayzr
-    healthCheckPath: /health
-    autoDeploy: true
-    # Its own disk, so the month's journal survives a restart. If a separate
-    # disk is not wanted, point AYZR_DATA_DIR at the bot's mount and keep it
-    # under its own `ayzr/` subfolder.
-    disk:
-      name: ayzr-data
-      mountPath: /var/data
-      sizeGB: 1
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.12.6"
-      - key: AYZR_DATA_DIR
-        value: /var/data
-      - key: AYZR_ENABLED
-        value: "1"
-      # Secrets set in this service's dashboard, never here:
-      #   AYZR_TELEGRAM_BOT_TOKEN  — a *second* bot, its own chat
-      #   AYZR_TELEGRAM_CHAT_ID
-      #   AYZR_AI_KEY              — AYZR's own Groq key
       - key: AYZR_TELEGRAM_BOT_TOKEN
         sync: false
       - key: AYZR_TELEGRAM_CHAT_ID
         sync: false
       - key: AYZR_AI_KEY
         sync: false
+

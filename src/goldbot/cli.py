@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
         "command",
         nargs="?",
         default="card",
-        choices=["analyse", "analyze", "card", "bot", "send", "news", "backtest", "study"],
+        choices=["analyse", "analyze", "card", "bot", "dual", "send", "news", "backtest", "study"],
     )
     parser.add_argument("--no-ai", action="store_true", help="skip the AI layer")
     parser.add_argument("--no-news", action="store_true", help="skip the news layer")
@@ -105,6 +105,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         Bot(settings).run_forever()
         return 0
+
+    if args.command == "dual":
+        # Both bots on one host and one port — the free-tier shape. Imported
+        # here so the lighter subcommands never pay for it.
+        from .dual import run as run_dual
+
+        if not settings.telegram_token:
+            print("لا يوجد TELEGRAM_BOT_TOKEN")
+            return 1
+        return run_dual(settings)
 
     if args.command == "backtest":
         from .backtest.engine import run_backtest

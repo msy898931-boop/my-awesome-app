@@ -426,7 +426,7 @@ class Bot(CommandScreens):
             self._log("لوحة التحكم جاهزة أسفل الشاشة")
         return ok
 
-    def run_forever(self) -> None:
+    def run_forever(self, *, open_health: bool = True, start_ayzr: bool = True) -> None:
         """Poll commands, then the market, then sleep. Runs until interrupted.
 
         The two cadences are separated. ``getUpdates`` long-polls, so a button
@@ -434,9 +434,15 @@ class Bot(CommandScreens):
         ``poll_seconds`` interval and is not re-run for every update. The old
         single-sleep loop only looked for input once a minute, which is why a
         press could sit unanswered long enough to look broken.
+
+        ``open_health`` and ``start_ayzr`` let a supervisor that runs this loop
+        beside AYZR's own bot use one health port and one shadow runner between
+        them (see :mod:`goldbot.dual`). Alone, both default on.
         """
-        self._start_health()
-        self._start_ayzr()
+        if open_health:
+            self._start_health()
+        if start_ayzr:
+            self._start_ayzr()
         self._register_commands()
         self.install_panel()
         self._log(f"البوت يعمل — كل {self.settings.poll_seconds} ثانية")

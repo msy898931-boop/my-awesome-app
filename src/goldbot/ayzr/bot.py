@@ -167,16 +167,23 @@ class AyzrBot:
 
     # ── loop ─────────────────────────────────────────────────────────────
 
-    def run_forever(self) -> None:
+    def run_forever(self, *, open_health: bool = True, start_runner: bool = True) -> None:
         """Poll commands, keep the shadow runner ticking, stay alive.
 
         The bot's presence is what makes the month-long test *visible*: it
         starts the runner, opens its own health port, and answers commands. If
         it has no token it still runs the runner headless, because the
         collection matters more than the buttons.
+
+        ``open_health`` and ``start_runner`` let a supervisor that runs this loop
+        beside the main bot (see :mod:`goldbot.dual`) hand the port and the
+        runner to that supervisor instead of racing it for either. Alone, both
+        default on.
         """
-        self._start_health()
-        self._start_runner()
+        if open_health:
+            self._start_health()
+        if start_runner:
+            self._start_runner()
         if self.tg is not None:
             self._register_commands()
             self._install_panel()

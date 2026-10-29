@@ -147,14 +147,18 @@ The market data itself is keyless (Kraken/Binance), as it is for the bot.
 
 ### Deploying it
 
-`render.yaml` carries a second web service, `goldbot-ayzr`, with its own disk
-and its own secrets, so AYZR can be restarted or stopped without touching the
-bot. It is **not** free: Render's free tier is one web service and 750
-instance-hours a month, and two always-on services need 1440. Either run the
-second service on a paid plan, or run AYZR as a cron that calls
-`python -m goldbot.ayzr.cli loop --once` every 15 minutes — a bar an hour of
-boot time, which fits the free allowance. Delete the service block to keep
-AYZR on the bot's host.
+AYZR has no service of its own. Render's free tier is one web service and 750
+instance-hours a month; two always-on services need 1440 and would suspend
+*every* free service in the workspace, and a disk needs a paid instance
+besides. So `render.yaml` starts `python -m goldbot.dual`, which runs AYZR's
+loop beside the bot's in one process: its own token, its own chat, its own
+journal, its own key, over one shared `/health`. The shadow runner is started
+once (by the bot), so a signal is never journalled twice.
+
+Two bots on one free instance means no durable state: AYZR's journal is lost
+when Render recycles the instance. The one-month shadow test therefore needs a
+paid instance (and a disk) to be meaningful. To run AYZR entirely on its own
+host instead, give it a paid service with `startCommand: python -m goldbot.ayzr`.
 
 ## The one-month shadow test
 
