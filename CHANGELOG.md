@@ -7,6 +7,22 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The bot now works unprompted.** Two things it used to make you ask for now
+  arrive on their own. A **news heads-up** fires inside a lead window
+  (`GOLDBOT_NEWS_ALERT_MINUTES`, default 30) before a high-impact release, with
+  the event, its UTC clock time, and its forecast and previous — sent *before*
+  the blackout opens, because a warning delivered during the window is a warning
+  too late. And the **automatic push now carries the whole trade**: entry, stop,
+  target and R:R, plus the model's read, where before it printed a direction and
+  a setup and nothing a trader could act on. An event is announced exactly once
+  (keyed by country, title and scheduled time, persisted), so a restart or a
+  repeated read cannot turn one release into a stream of alerts.
+- **A hard daily cap on the bot's own AI calls** (`GOLDBOT_AI_DAILY_CAP`,
+  default 30). The free tier meters 200k tokens per model per day and a full
+  fact sheet is ~3.4k, so a loop that asks on every new idea can spend the day's
+  budget in an hour and then read as broken until midnight. When the cap is
+  spent the card loses the commentary, never the trade. The counter is per UTC
+  day and persisted, so a restart does not reset it.
 - **Repository governance files.** `SECURITY.md` (private disclosure route and
   the narrow threat model), `CODE_OF_CONDUCT.md`, `AGENTS.md` (the instructions
   an agent needs on arrival), `.editorconfig`, `.github/CODEOWNERS`, and issue

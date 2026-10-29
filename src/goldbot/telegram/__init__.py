@@ -11,11 +11,13 @@ Two deliberate properties, both about not being annoying:
   * **State is persisted.** A restart resumes instead of re-alerting.
 """
 
+from .alerts import alert_key, due_news_alerts
 from .bot import Bot
 from .client import Telegram
 from .format import (
     blackout_blocks_idea,
     calendar_unchecked,
+    format_alert,
     format_analysis,
     format_plan,
     format_status,
@@ -23,8 +25,11 @@ from .format import (
 
 __all__ = [
     "Telegram",
+    "alert_key",
     "blackout_blocks_idea",
     "calendar_unchecked",
+    "due_news_alerts",
+    "format_alert",
     "format_analysis",
     "format_plan",
     "format_status",

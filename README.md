@@ -73,8 +73,20 @@ typed command.
 - `/تحديث` — read again now, bypassing the cache
 - `/إعدادات` — timeframes and sensitivity
 
-The automatic push is a price card: price, direction and the next release. It
-costs no model tokens — the AI prose is only produced when a card is asked for.
+The bot works **unprompted**. Two things arrive on their own:
+
+- a **news heads-up** inside a lead window (`GOLDBOT_NEWS_ALERT_MINUTES`,
+  default 30) before a high-impact release — the event, its UTC clock time, and
+  its forecast and previous. It is sent *before* the blackout opens, because a
+  warning delivered during the window is a warning too late. Each event is
+  announced exactly once, even across restarts.
+- a **trade card** when the idea is new, carrying the price, the direction, the
+  setup, and the numbers — entry, stop, target, R:R — plus the model's read.
+
+The AI is asked only when a card is actually due, and within a hard daily cap
+(`GOLDBOT_AI_DAILY_CAP`, default 30): a metered free tier is easy to spend into
+a silent, broken-looking state. When the cap is reached the card loses the
+commentary, never the trade. The deterministic plan is always there.
 
 The bot answers **only the chat named by `TELEGRAM_CHAT_ID`**. Every other chat
 is ignored and logged: an answer is a market read, and a read can cost an AI
@@ -139,6 +151,8 @@ docker run -d --name goldbot \
 | `GOLDBOT_MIN_RR` | Minimum reward-to-risk (default 2.0) |
 | `GOLDBOT_POLL_SECONDS` | Loop interval (default 60) |
 | `GOLDBOT_CACHE_SECONDS` | Reuse a read within this window (default 90) |
+| `GOLDBOT_NEWS_ALERT_MINUTES` | Heads-up this many minutes before a high-impact release (default 30; 0 disables) |
+| `GOLDBOT_AI_DAILY_CAP` | Ceiling on the bot's own AI calls per UTC day (default 30) |
 | `GOLDBOT_ENABLE_*` | Toggle each data provider (`KRAKEN`, `BINANCE`, `GOLDAPI`, `YAHOO`) |
 | `GOLDBOT_ENABLE_ARCHIVE` / `GOLDBOT_ARCHIVE_DIR` | Local archive on/off and where it lives |
 | `GOLDBOT_ENABLE_MACRO` | Macro context (dollar, real yield) on/off. Context only, never a signal |

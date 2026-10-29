@@ -26,8 +26,9 @@ from dataclasses import replace
 
 from ..config import Settings
 from ..pipeline import Pipeline, Result
+from .alerts import alert_key, due_news_alerts, prune
 from .client import Telegram, TelegramError
-from .format import blackout_blocks_idea, format_price
+from .format import blackout_blocks_idea, format_alert, format_price
 from .menus import (
     ALL_TIMEFRAMES,
     HELP,
@@ -85,6 +86,13 @@ class Bot(CommandScreens):
         self._last_offset: int | None = None
         self._pending_key: str | None = None
         self._primed = False
+        # Event key -> epoch announced. Persisted, so a restart cannot re-fire a
+        # heads-up the trader has already seen.
+        self._announced: dict[str, float] = {}
+        # UTC day and the AI calls made within it, so the daily cap survives a
+        # restart instead of resetting on every deploy.
+        self._ai_day: str = ""
+        self._ai_calls: int = 0
         self._load()
         # Preferences live in the state file so a restart keeps them, and a
         # rebuilt pipeline is what makes a change take effect immediately.
@@ -129,6 +137,9 @@ class Bot(CommandScreens):
             self._pending_key = state.get("pending_key")
             self._tf_override = state.get("timeframes")
             self._rr_override = state.get("min_rr")
+            self._announced = dict(state.get("announced") or {})
+            self._ai_day = str(state.get("ai_day") or "")
+            self._ai_calls = int(state.get("ai_calls") or 0)
         except (OSError, ValueError):
             pass
 
@@ -137,6 +148,9 @@ class Bot(CommandScreens):
             "last_key": self._last_key,
             "last_offset": self._last_offset,
             "pending_key": self._pending_key,
+            "announced": self._announced,
+            "ai_day": self._ai_day,
+            "ai_calls": self._ai_calls,
         }
         if getattr(self, "_tf_override", None):
             payload["timeframes"] = list(self.settings.timeframes)
@@ -161,6 +175,18 @@ class Bot(CommandScreens):
 
     # ── identity ─────────────────────────────────────────────────────────
 
+    def _ai_today(self) -> int:
+        """AI calls made so far today (UTC). Rolls the counter at the date change."""
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        if today != self._ai_day:
+            self._ai_day = today
+            self._ai_calls = 0
+        return self._ai_calls
+
+    def _count_ai_call(self) -> None:
+        self._ai_calls = self._ai_today() + 1
+        self._save()
+
     @staticmethod
     def plan_key(result: Result) -> str:
         """The identity of an *idea*, not of its numbers.
@@ -181,21 +207,35 @@ class Bot(CommandScreens):
     def tick(self, with_ai: bool = True) -> Result | None:
         """Run one analysis and push a card if the idea is new. Returns the result.
 
-        The automatic push is a *price* card and costs no model tokens: the AI
-        is only asked when a card is actually due, and even then the push stays
-        deterministic. Spending 3400 tokens per cycle on prose that is discarded
-        on all but a handful of cycles is what drained the daily quota in an
-        hour and a half.
+        Two unprompted things happen here, and nothing else:
+
+          * a **news heads-up** when a high-impact release is inside the lead
+            window — the one fact a trader cannot check for themselves;
+          * a **trade card** when the idea is new, carrying the numbers and, if
+            the budget allows, the model's read.
+
+        The AI is asked only when a card is actually due, and only within a hard
+        daily cap: spending tokens on prose that is discarded on all but a
+        handful of cycles is what drained the free tier in an hour and a half.
         """
         result = self.pipeline.run(with_ai=False)
         key = self.plan_key(result)
 
         if not self._primed:
-            # First pass: learn the current board, announce nothing.
+            # First pass: learn the current board, announce nothing — but mark
+            # the events already inside the lead window as announced, so a
+            # restart does not fire a burst of alerts for news the trader has
+            # already been living through.
             self._last_key = key
             self._primed = True
+            for event in due_news_alerts(
+                result.news, self.settings.news_alert_minutes, self._announced
+            ):
+                self._announced[alert_key(event)] = time.time()
             self._save()
             return result
+
+        self._announce_news(result.news)
 
         # A blackout withholds *new ideas*, not the price. During a high-impact
         # release the card still goes out as a price read with the window
@@ -213,11 +253,13 @@ class Bot(CommandScreens):
             else:
                 self._pending_key = None
             self._save()
+            analysis = self._enrich(result) if (with_ai and not withheld) else None
             text = format_price(
                 result.spot,
                 None if withheld else result.plan,
                 result.news,
                 withheld=withheld,
+                analysis=analysis,
             )
             try:
                 ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
@@ -233,6 +275,48 @@ class Bot(CommandScreens):
             else:
                 self._log(f"أُرسلت فكرة — {(result.plan or {}).get('direction', '?')}")
         return result
+
+    def _announce_news(self, news: dict | None) -> None:
+        """Send a heads-up for each high-impact release inside the lead window.
+
+        Keyed and persisted, so an event is announced exactly once no matter how
+        often the loop runs or how often it restarts.
+        """
+        for event in due_news_alerts(news, self.settings.news_alert_minutes, self._announced):
+            text = format_alert(event, news)
+            try:
+                ok = self.tg.send(self.chat_id, text, keyboard=menu_keyboard())
+            except TelegramError as exc:
+                self._log(f"فشل تنبيه خبر ({exc})")
+                continue
+            # Marked announced only once it is actually sent: a failed send must
+            # be retried on the next cycle, not swallowed as "done".
+            if ok:
+                self._announced[alert_key(event)] = time.time()
+                self._log(f"تنبيه خبر — {event.get('title')} بعد {event.get('in_minutes')} د")
+            else:
+                self._log("فشل تنبيه خبر (رفض تيليجرام)")
+        self._announced = prune(self._announced)
+
+    def _enrich(self, result: Result) -> dict | None:
+        """Ask the model for prose, within a hard daily cap. ``None`` when capped.
+
+        The cap exists because the free tier is metered per day, and a loop that
+        calls the model on every new idea can exhaust it and then look broken
+        until midnight. When the cap is reached the deterministic plan still
+        goes out — the card loses the commentary, never the trade.
+        """
+        if not self.settings.ai_enabled:
+            return None
+        if self._ai_today() >= self.settings.ai_daily_cap:
+            return None
+        enriched = self.pipeline.analyse(result)
+        self._count_ai_call()
+        analysis = enriched.analysis or None
+        # A fallback carries no reasoning; do not spend the cap's good name on it.
+        if analysis and not (analysis.get("reasoning") or analysis.get("confidence")):
+            return None
+        return analysis
 
     # ── commands ─────────────────────────────────────────────────────────
 

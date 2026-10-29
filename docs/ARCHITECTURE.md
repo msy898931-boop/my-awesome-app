@@ -119,17 +119,20 @@ is an enrichment, never a dependency.
 | `client.py` | the Bot API client — one guarded call per method |
 | `menus.py` | buttons, help text, and the payload resolver; pure data and functions |
 | `screens.py` | the dispatcher: one screen per command, as a mixin the bot inherits |
+| `alerts.py` | when to speak up about news, unprompted; pure decision functions |
 | `bot.py` | the loop and the state — poll cadence, pushed card, health port |
 | `format.py` | the Arabic cards |
 
 `client.py` is a thin Bot API client. `menus.py` holds the buttons and the
 help text — pure data and pure functions, so a keyboard can be tested on its
 own. `screens.py` is the dispatcher: one screen per command, as a mixin the bot
-inherits. `bot.py` owns the loop and the state — the poll cadence, the pushed
-card, the persisted preferences, and the health port. `format.py` renders the
-Arabic cards. The bot answers **only** the chat in `TELEGRAM_CHAT_ID` — every
-other chat is ignored and logged, because an answer is a market read and a read
-can cost an AI call.
+inherits. `alerts.py` decides, as a pure function, which releases deserve an
+unprompted heads-up; it is clock-free and network-free, so the decision can be
+tested on its own. `bot.py` owns the loop and the state — the poll cadence, the
+pushed card, the persisted preferences, and the health port. `format.py`
+renders the Arabic cards. The bot answers **only** the chat in
+`TELEGRAM_CHAT_ID` — every other chat is ignored and logged, because an answer
+is a market read and a read can cost an AI call.
 
 ---
 
@@ -146,8 +149,13 @@ These hold across the codebase and are what the tests defend:
 5. **Fail closed, not open.** When a check cannot run, the guarded action is
    withheld — an unread calendar withholds an idea just as an open window does.
    "We could not check" is never treated as "nothing to find".
-6. **The AI is optional.** Every read exists without it.
-7. **Pure standard library.** No runtime dependency, ever (see CONTRIBUTING).
+6. **The AI is optional.** Every read exists without it, and the bot's own use
+   of it is capped per day so a metered tier cannot be spent into a silent,
+   broken-looking state.
+7. **Speak before, not during.** The heads-up for a high-impact release goes out
+   inside a lead window, because once the blackout opens the idea is already
+   withheld — a warning delivered then is a warning too late.
+8. **Pure standard library.** No runtime dependency, ever (see CONTRIBUTING).
 
 ---
 
