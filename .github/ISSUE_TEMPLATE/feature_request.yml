@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest a change to how the bot reads, reports, or behaves.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you write: this project's one rule is **honesty over features**.
+        A change that makes a bad read look better will be turned down. A change
+        that makes a read more truthful is always worth discussing.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is hard, wrong, or missing today. Describe the need, not the fix.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+    validations:
+      required: false
+  - type: checkboxes
+    id: honesty
+    attributes:
+      label: Does it keep the bot honest?
+      options:
+        - label: It does not add an execution path (the bot is advisory only).
+        - label: A failure would still be reported, not hidden behind a default.

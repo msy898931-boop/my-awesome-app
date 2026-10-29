@@ -1,0 +1,5 @@
+# CODEOWNERS — https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# A single maintainer owns everything: every change gets a review request.
+# Replace the handle below if ownership moves.
+
+*       @msy898931-boop
