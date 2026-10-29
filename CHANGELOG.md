@@ -34,6 +34,29 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running `python -m goldbot.cli card`, not by reading the code.
 
 ### Added
+- **A matched control for the strategy, so its return can be split into skill
+  and drift.** The historical study concluded the setup is "beta to gold, not
+  skill" from the regime table alone; that conclusion is now measured rather
+  than argued. `backtest/control.py` re-runs the strategy's own trades beside
+  surrogate sets that share *every* frozen field — direction, risk distance,
+  reward-to-risk, cost, fill window, horizon — and differ only in the **entry
+  time**, drawn at random. Two controls defeat two confounds: `random` asks
+  whether the geometry alone was lucky, and `regime` draws only from bars in the
+  trade's *own* trend regime, so the drift it inherited is held constant and
+  only the timing within that regime is free. A cell is called `skill` only when
+  it beats both at α = 0.05; `beta` when it loses to either; `inconclusive`
+  when the sample cannot decide — and `inconclusive` is never printed as a pass.
+  The window the surrogates draw from is the span the real trades occupy, not
+  the whole sample: a control allowed to draw from a different stretch of a
+  trending sample would let a difference in drift read as timing skill. That
+  distinction is not cosmetic — it moved the control's measured false-positive
+  rate on zero-skill entries from **63% to 0%** across a 40-seed panel, and a
+  test now guards it.
+- **`research/study_control.py`** — runs the control over the archive, cell by
+  cell (frame, direction, setup), and prints each verdict with both gaps and
+  both p-values. On the current two-week archive most cells are `inconclusive`
+  (too few fills to judge, reported as such) and the one cell large enough to
+  call — M30 sell — is `beta`, consistent with the earlier finding.
 - **`GOLDBOT_DATA_DIR`, a single root for everything that must outlive the
   process** — the bot's state file and the candle archive. On a host with an
   ephemeral filesystem (Render's free plan among them) a restart used to reset

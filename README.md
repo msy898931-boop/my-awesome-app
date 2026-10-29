@@ -195,8 +195,8 @@ python -m pytest tests/ -q     # 533 tests for the bot
 ```
 
 CI runs the suite under `coverage` and **fails below a floor of 96%** of
-`src/goldbot` + `starter/goldkit` (measured 98% on the current revision,
-`src/goldbot` alone at 97.6%, no module under 90%), so the number cannot drift
+`src/goldbot` + `starter/goldkit` (measured 97% on the current revision,
+no module under 90%), so the number cannot drift
 away from the truth unnoticed.
 
 The extracted [starter kit](starter/README.md) carries its own tests, run by
@@ -283,11 +283,11 @@ src/goldbot/
   news/             economic calendar, RSS headlines, blackout, macro context
   ai/               Groq client and prompt
   telegram/         client, menus, screens, the polling bot
-  backtest/         the historical study engine
-research/           reproducible robustness and sweep studies
+  backtest/         study engine and the matched control
+research/           reproducible robustness, sweep and control studies
 starter/            goldkit — the reusable patterns, extracted and tested
 docs/               architecture, data flow, module map
-tests/              533 tests
+tests/              614 tests (+20 in starter/)
 Dockerfile          two-stage image, non-root, healthcheck
 docker-compose.yml  local run with the archive on a volume
 ```
@@ -311,6 +311,13 @@ not skill** — a buy wins when the market rises and loses when it falls. The
 one surviving cell (BOS continuation on H1) is positive in both regimes, but
 its confidence interval includes zero and it decays in the second half, so it
 was rejected. The bot is an analyst, not an edge.
+
+That conclusion is now measured, not asserted. `backtest/control.py` re-runs the
+strategy's own trades beside matched surrogates that share its geometry and
+costs and differ only in the entry time, with a second control that draws only
+from the trade's own trend regime. A cell has to beat both to count as skill;
+on the archive, the one cell large enough to call is beta. See
+`research/study_control.py`.
 
 ---
 
