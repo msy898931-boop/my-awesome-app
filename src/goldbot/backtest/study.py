@@ -97,6 +97,8 @@ def run_study(
             "bars": 0,
             "span_days": 0,
             "period": None,
+            "trade_period": None,
+            "trade_span_days": 0,
             "windows": 0,
             "metrics": metrics([]),
             "equity_curve": [],
@@ -142,6 +144,20 @@ def run_study(
         if len(primary) > 1
         else None
     )
+    # Where the *trades* fall, not just where the bars do. The bars can start a
+    # year before the first fill — a warmup, a quiet regime, or a gate that only
+    # opens late — and quoting the bar span as if it were the sample would
+    # overstate the evidence. The trade span is the honest denominator.
+    trade_period = None
+    trade_span_days = 0
+    filled = [t for t in trades if t.outcome != "no_fill"]
+    if filled:
+        first, last = min(t.time for t in filled), max(t.time for t in filled)
+        trade_span_days = round((last - first) / 86400)
+        trade_period = (
+            time.strftime("%Y-%m-%d", time.gmtime(first)),
+            time.strftime("%Y-%m-%d", time.gmtime(last)),
+        )
     verdict = skill_test(trades, primary, n=n_control)
 
     # The headline verdict is an average over every setup, so a single real edge
@@ -159,6 +175,8 @@ def run_study(
         "bars": len(primary),
         "span_days": span_days,
         "period": period,
+        "trade_period": trade_period,
+        "trade_span_days": trade_span_days,
         "windows": window_count,
         "metrics": metrics(trades),
         "equity_curve": equity_curve(trades),

@@ -240,6 +240,20 @@ def format_report(result: dict) -> str:
     if result.get("period"):
         span += f" ({result['period'][0]} → {result['period'][1]})"
     lines.append(f"  النافذة الزمنية: {span} | نوافذ: {result['windows']}")
+    # The bars and the trades need not cover the same calendar: a long warmup or
+    # a gate that opens late can leave half the sample trade-free, and the bar
+    # span would then overstate the evidence. Say where the trades actually are.
+    tp = result.get("trade_period")
+    if tp and result.get("trade_span_days") is not None:
+        share = (
+            round(100 * result["trade_span_days"] / result["span_days"])
+            if result.get("span_days")
+            else None
+        )
+        line = f"  نافذة الصفقات الفعلية: {result['trade_span_days']} يوم ({tp[0]} → {tp[1]})"
+        if share is not None and share < 90:
+            line += f" — {share}% من نافذة الشموع فقط"
+        lines.append(line)
     lines.append("")
     lines.append("  ── المقاييس الرئيسية ──")
     lines.append(f"    التوقّع (Expectancy)     : {_fmt(m['expectancy'])} R للصفقة")

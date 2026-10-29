@@ -126,6 +126,14 @@ def test_every_setup_gets_its_own_curve(monkeypatch):
     for name, pts in result["setup_points"].items():
         assert [v for _, v in pts] == result["setup_curves"][name]
 
+    # The trade window brackets the fills exactly: its ends are the first and
+    # last point of the dated curve, and the span agrees with them.
+    if result["equity_points"]:
+        first_t = result["equity_points"][0][0]
+        last_t = result["equity_points"][-1][0]
+        assert result["trade_span_days"] == round((last_t - first_t) / 86400)
+        assert result["trade_period"] is not None
+
     # The pooled curve is exactly the sum of the per-setup curves at the end:
     # the setups partition the trades, so their finals must add to the whole.
     if result["equity_curve"]:

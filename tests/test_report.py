@@ -249,6 +249,8 @@ def _result():
         "bars": 200,
         "span_days": 30,
         "period": ("2024-01-01", "2024-01-31"),
+        "trade_period": ("2024-01-05", "2024-01-20"),
+        "trade_span_days": 15,
         "windows": 2,
         "metrics": metrics(trades),
         "consistency": consistency(windows(trades, 2)),
@@ -277,6 +279,24 @@ def test_the_report_includes_the_control_verdict_and_the_consistency_line():
 def test_the_report_names_the_sample_period():
     text = format_report(_result())
     assert "2024-01-01" in text and "2024-01-31" in text
+
+
+def test_the_report_says_where_the_trades_are_not_just_where_the_bars_are():
+    """A bar span can overstate the sample; the trade window is the honest one."""
+    text = format_report(_result())
+    assert "نافذة الصفقات الفعلية" in text
+    assert "2024-01-05" in text and "2024-01-20" in text
+    # 15 of 30 days is half the bar window, and the report must say so.
+    assert "50% من نافذة الشموع" in text
+
+
+def test_a_trade_window_that_covers_the_bars_carries_no_shortfall_warning():
+    result = _result()
+    result["trade_period"] = ("2024-01-01", "2024-01-31")
+    result["trade_span_days"] = 30
+    text = format_report(result)
+    assert "نافذة الصفقات الفعلية" in text
+    assert "فقط" not in text
 
 
 def test_the_report_explains_the_outcome_split():
