@@ -126,28 +126,28 @@ averaged away.
 | `macro.py` | FRED CSV + EURUSDT — dollar and real yield as **context** |
 | `window.py` | assembles the four into one `NewsPicture`, with flags |
 
-The blackout gate is the important one, and it **fails closed** — but on the
-right fact. Three facts about the window are kept distinct, because they call
-for different answers:
+The blackout gate withholds on exactly one fact. Three facts about the window
+are kept distinct, because they call for different answers:
 
 - a high-impact window is **open** — the idea is withheld and the card says so;
 - no window was found on a read we **hold** — the idea goes out;
-- the calendar **could not be read at all** — the idea is withheld anyway,
-  because an unknown window is not a clear one, and the card says the read
-  failed.
+- the calendar **could not be read at all** — the idea goes out **with a
+  warning** that the news check failed. An unknown window is not a clear one, so
+  the card says the check failed; but it shows the plan rather than hiding it.
+  The source limits by IP, so a 429 is routine, and failing closed on it turned a
+  transient block into a bot that showed nothing at all.
 
 "A read we hold" is the key refinement. The source rate-limits by IP, so a 429
 is routine, and the last good read is **saved to disk** and restored on the next
 start. A blocked fetch therefore degrades to a *stale but usable* calendar — the
-window is known, just not this minute's — rather than to "unknown", which would
-withhold every idea. The fallback is bounded: a saved read is refused once it is
-older than `MAX_STALE` or once every event in it is already in the past, so it
-can only ever describe the week we are actually in. The `usable` flag carries
-this distinction into the digest: `checked=False` (and therefore withholding) is
-now reserved for the case where there is genuinely nothing to reason about.
+window is known, just not this minute's — rather than to "unknown". The fallback
+is bounded: a saved read is refused once it is older than `MAX_STALE` or once
+every event in it is already in the past, so it can only ever describe the week
+we are actually in. The `usable` flag carries this distinction into the digest:
+`checked=False` marks the case where there is genuinely nothing to reason about.
 
-The rule holds on **every** path — the price card still goes out with the reason
-flagged, and the idea follows once a read succeeds.
+The rule holds on **every** path — the price card goes out with the reason
+flagged, and so does the idea, whether the read succeeded or failed.
 
 ### `ai/` — the narrative layer, and nothing else
 
@@ -190,12 +190,15 @@ These hold across the codebase and are what the tests defend:
 3. **A number carries its provenance.** Where it survived a failure it carries
    the observation day (`as_of`).
 4. **Degrade, do not crash.** Every network leg falls back and records why.
-5. **Fail closed, not open.** When a check cannot run, the guarded action is
-   withheld — an unread calendar withholds an idea just as an open window does.
-   "We could not check" is never treated as "nothing to find". The one nuance is
-   a *saved* read: a blocked fetch falls back to the last good calendar (bounded
-   by age and by holding an event still ahead), which is a known window, not an
-   unknown one — so it does not withhold.
+5. **An unknown is never rendered as a known — but it is not a veto either.**
+   When a check cannot run, the card *says so*; it does not stay silent. Only a
+   *known* fact withholds an action: a high-impact window that is open suppresses
+   the idea, exactly as stated. An unread calendar does not — it shows the plan
+   with a warning, because the source limits by IP, so a 429 is routine, and
+   failing closed on it hid every idea for as long as the block lasted. A
+   *saved* read is the middle case: a blocked fetch falls back to the last good
+   calendar (bounded by age and by holding an event still ahead), which is a
+   known window, not an unknown one.
 6. **The AI is optional.** Every read exists without it, and the bot's own use
    of it is capped per day so a metered tier cannot be spent into a silent,
    broken-looking state.

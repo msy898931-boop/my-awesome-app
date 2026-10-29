@@ -25,11 +25,14 @@ it. Everything it sends is a reading, not an instruction.
 - **Builds a plan** with entry, stop and target from the setup's own zone, and
   requires a minimum reward-to-risk ratio (default 2.0).
 - **Reads the news**: the economic calendar (high-impact events, blackout
-  windows) and gold-relevant RSS headlines. A high-impact blackout withholds a
-  new idea on **every** path — the price card still goes out with the window
-  flagged and the idea follows once the window closes, and the card a trader
-  asks for shows the read without the entry/stop/target, saying plainly that a
-  setup is withheld rather than pretending the market is flat.
+  windows) and gold-relevant RSS headlines. A high-impact window withholds a new
+  idea on **every** path — the price card still goes out with the window flagged
+  and the idea follows once the window closes, and the card a trader asks for
+  shows the read without the entry/stop/target, saying plainly that a setup is
+  withheld rather than pretending the market is flat. An **unread** calendar
+  (the free source rate-limits by IP) does not hide the idea: the plan goes out
+  with a warning that the news check failed, so a transient block never turns
+  the bot silent.
 - **Names the macro wind, and does not pretend to trade it.** Gold's level
   correlation with the broad dollar is about **-0.6**, and this bot reads the
   dollar (EURUSD, live) and the real yield (FRED) so a card can say which way
@@ -194,7 +197,7 @@ down.
 ```bash
 make check                     # ruff + format + mypy + bandit + pip-audit + pytest
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 687 tests for the bot
+python -m pytest tests/ -q     # 688 tests for the bot
 ```
 
 CI runs the suite under `coverage` and **fails below a floor of 96%** of
@@ -290,7 +293,7 @@ src/goldbot/
 research/           reproducible robustness, sweep and control studies
 starter/            goldkit — the reusable patterns, extracted and tested
 docs/               architecture, data flow, module map
-tests/              687 tests (+20 in starter/)
+tests/              688 tests (+20 in starter/)
 Dockerfile          two-stage image, non-root, healthcheck
 docker-compose.yml  local run with the archive on a volume
 ```

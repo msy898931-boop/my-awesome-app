@@ -229,12 +229,12 @@ def test_pending_key_survives_a_restart():
     assert reborn._pending_key == "buy:CHoCH + FVG", "the withheld idea must persist"
 
 
-def test_an_unchecked_calendar_withholds_the_idea_on_the_push_too():
-    """A failed calendar read must not authorise the push any more than the card.
+def test_an_unchecked_calendar_still_sends_the_idea_with_a_warning():
+    """A failed read is a missing input, not a veto: the idea goes out, flagged.
 
-    The digest reports ``active=False`` when the fetch failed, so a push that
-    trusted only ``active`` sent the direction as if the rule had been checked.
-    One predicate guards both paths, and it now fails closed."""
+    Failing closed here meant a rate-limited feed hid every plan for as long as
+    the source stayed blocked. The push now sends the direction and says the
+    news check failed, so the trader sees the plan and knows what is missing."""
     rec = _Recorder()
     bot = _bot(rec)
     bot._last_key = "no-trade"
@@ -245,22 +245,26 @@ def test_an_unchecked_calendar_withholds_the_idea_on_the_push_too():
     assert len(rec.sent) == 1, "the price card must still go out"
     card = rec.sent[0]
     assert "4046.0" in card, "the price is still delivered"
-    assert "شراء" not in card, "the idea is withheld when the calendar could not be read"
+    assert "شراء" in card, "the idea goes out even when the calendar could not be read"
+    assert "تعذّر فحص التقويم" in card, "and the failed check is stated, not hidden"
 
 
-def test_the_withheld_idea_is_delivered_when_the_calendar_reads_again():
-    """The withheld idea is not lost — it goes out once the read succeeds."""
+def test_an_unread_calendar_does_not_make_the_idea_pending():
+    """Nothing was withheld, so nothing is queued for re-delivery.
+
+    The idea goes out at once; the successful read later must not look like a
+    window closing and send the same idea a second time."""
     rec = _Recorder()
     bot = _bot(rec)
     bot._last_key = "no-trade"
     bot.pipeline.run = lambda **k: _idea(blackout={"active": False, "checked": False})
     bot.tick()
-    assert len(rec.sent) == 1 and "شراء" not in rec.sent[0]
+    assert len(rec.sent) == 1 and "شراء" in rec.sent[0]
+    assert bot._pending_key is None, "an unchecked read withholds nothing"
 
     bot.pipeline.run = lambda **k: _idea(blackout={"active": False, "checked": True})
     bot.tick()
-    assert len(rec.sent) == 2
-    assert "شراء" in rec.sent[1]
+    assert len(rec.sent) == 1, "the same idea is not sent twice"
 
 
 # ── sources: the label must name the feed that answers ───────────────────
