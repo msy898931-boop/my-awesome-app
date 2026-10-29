@@ -97,9 +97,123 @@ def test_news_never_asks_the_model(patched):
 
 
 def test_backtest_runs_the_study(patched, monkeypatch, capsys):
-    monkeypatch.setattr("goldbot.backtest.engine.run_backtest", lambda settings: {"trades": 0})
+    monkeypatch.setattr(
+        "goldbot.backtest.engine.run_backtest", lambda settings, primary_tf=None: {"trades": 0}
+    )
     assert cli.main(["backtest"]) == 0
     assert json.loads(capsys.readouterr().out) == {"trades": 0}
+
+
+def test_backtest_command_forwards_the_frame(patched, monkeypatch, capsys):
+    seen = {}
+
+    def _fake(settings, primary_tf=None):
+        seen["tf"] = primary_tf
+        return {"trades": 0}
+
+    monkeypatch.setattr("goldbot.backtest.engine.run_backtest", _fake)
+    assert cli.main(["backtest", "--tf", "H4"]) == 0
+    assert seen["tf"] == "H4"
+
+
+def test_study_chart_flag_prints_the_curve(patched, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    assert cli.main(["study", "--chart"]) == 0
+    out = capsys.readouterr().out
+    assert "منحنى رأس المال" in out
+
+
+def test_study_svg_flag_writes_a_file(patched, monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    target = tmp_path / "curve.svg"
+    assert cli.main(["study", "--svg", str(target)]) == 0
+    svg = target.read_text(encoding="utf-8")
+    assert svg.startswith("<svg")
+    assert "<polyline" in svg
+    assert "حُفظ المنحنى" in capsys.readouterr().out
+
+
+def test_study_chart_setups_prints_one_curve_per_setup(patched, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    assert cli.main(["study", "--chart-setups"]) == 0
+    out = capsys.readouterr().out
+    # Both setup titles appear, each with its own curve — not the pooled one twice.
+    assert "bos" in out and "sweep" in out
+
+
+def test_study_svg_dir_writes_pooled_and_per_setup(patched, monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(
+        "goldbot.backtest.study.run_study",
+        lambda settings, primary_tf=None, window_count=5: _study_result(),
+    )
+    out_dir = tmp_path / "curves"
+    assert cli.main(["study", "--svg-dir", str(out_dir)]) == 0
+    files = sorted(p.name for p in out_dir.iterdir())
+    # all + one per setup, and the names come from the labels (deterministic).
+    assert files == sorted(f"{name}.svg" for name in ("all", "bos", "sweep"))
+    for path in out_dir.iterdir():
+        body = path.read_text(encoding="utf-8")
+        assert body.startswith("<svg") and "<polyline" in body
+
+
+def _study_result() -> dict:
+    """A minimal but *complete* study dict: the real metric block, a short curve."""
+    from goldbot.backtest.engine import Trade
+    from goldbot.backtest.report import metrics
+
+    trades = [
+        Trade(
+            index=i,
+            time=1_700_000_000 + i * 3600,
+            direction="buy",
+            entry=2000.0,
+            stop=1990.0,
+            target=2020.0,
+            rr=2.0,
+            setup="bos",
+            outcome="win" if r > 0 else "loss",
+            r_multiple=r,
+        )
+        for i, r in enumerate((1.0, -1.0, 2.0))
+    ] + [
+        Trade(
+            index=9,
+            time=1_700_000_000 + 9 * 3600,
+            direction="sell",
+            entry=2000.0,
+            stop=2010.0,
+            target=1980.0,
+            rr=2.0,
+            setup="sweep",
+            outcome="loss",
+            r_multiple=-1.0,
+        )
+    ]
+    return {
+        "symbol": "XAUUSD",
+        "primary_tf": "H1",
+        "bars": 100,
+        "span_days": 3,
+        "windows": 1,
+        "metrics": metrics(trades),
+        "equity_curve": [1.0, 0.0, 2.0, 1.0],
+        "setup_curves": {"bos": [1.0, 0.0, 2.0], "sweep": [-1.0]},
+        "consistency": {"windows": 1, "positive": 1, "share": 1.0, "thin": 0},
+        "control": None,
+        "setup_control": {},
+        "by_direction": {"buy": metrics(trades[:3]), "sell": metrics(trades[3:])},
+        "by_setup": {"bos": metrics(trades[:3]), "sweep": metrics(trades[3:])},
+        "notes": ["اختبار"],
+    }
 
 
 def test_unknown_command_exits_nonzero():

@@ -6,6 +6,48 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **A professional backtest with a matched control.** `cli study` measures the
+  strategy over the deepest series each frame can offer: headline metrics,
+  contiguous time windows, and a control that re-runs the trades' own geometry
+  at random entry times (plus a regime-matched draw). The verdict is split into
+  `skill` / `beta` / `inconclusive` instead of asserted as one number, and a
+  metric that cannot be computed prints as an em dash, never a zero. On 833 days
+  of H1 the answer is **beta** — a long-gold bet wearing an SMC costume. The
+  study also scores each setup against its *own* control, so a single cell can
+  be judged on its own: on H1, BOS continuation read `skill` (+0.355R, random
+  p=0.003, regime p=0.012) where sweep reversal was negative — but the same
+  cell on H4 (an independent, 2253-day sample) read `beta` (+0.021R, p=0.72).
+  A single-frame `skill` verdict is therefore **not** evidence; it has to
+  replicate across frames to count, and this one does not.
+- **An equity curve you can actually look at.** `cli study --chart` prints
+  the cumulative-R curve as a text chart, and `--svg FILE` writes it as a
+  standalone SVG — both from `backtest/chart.py`, with no plotting
+  dependency. The zero line is drawn only when the curve crosses it, so its
+  absence is itself information; an empty curve is named, never drawn.
+### Fixed
+- **`نسبة النجاح` meant two different things in two layers.** The metric
+  block (`report.metrics`, behind `cli study`) counted a win as *positive R*,
+  which swept in timeouts that merely closed up, while the walk engine's own
+  summary (`cli backtest`) counted a win as *the target being hit*. The same
+  name gave two numbers for the same run. Both now use the target/stop
+  binary, so a timeout is a win in neither; profit factor still partitions on
+  the sign of R, because it is money over every filled trade. A new
+  `الحصيلة` line prints the win/loss/timeout split, so the smaller win-rate
+  denominator is explained rather than mysterious, and the sample now carries
+  its **calendar dates** (`2024-07-18 → 2026-10-29`), because "833 days"
+  says nothing about which 833 the result was measured in.
+### Added
+- **A curve per setup, not just the pooled one.** `cli study --chart-setups`
+  prints one text curve for each setup and `--svg-dir DIR` writes the pooled
+  curve plus one SVG per setup (`all.svg`, `استمرار-BOS….svg`, …), with the
+  file names derived from the labels so a rerun overwrites rather than
+  duplicates. The pooled curve averages three different bets; seeing them
+  apart is what shows a setup that climbs while another bleeds — the shapes
+  match the verdicts (BOS climbs, CHoCH oscillates, the sweep spikes then
+  bleeds). The per-setup finals sum exactly to the pooled final, which the
+  suite asserts.
+
 ### Fixed
 - **A rate-limited calendar silently withheld every trade idea.** The economic
   calendar source (`nfs.faireconomy.media`) rate-limits by IP, and the bot runs
@@ -34,6 +76,47 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running `python -m goldbot.cli card`, not by reading the code.
 
 ### Added
+- **A professional backtest: deep data, out-of-sample windows, and every
+  headline metric.** The old `backtest` command walked whatever the archive
+  held — two weeks — and printed a total. `backtest/report.py` now computes
+  what a trader actually asks of a result: expectancy, profit factor, payoff,
+  max drawdown in R, longest losing streak, Sharpe and Sortino per trade, and a
+  best/worst trade. Each is a pure function of the trade list, so it is
+  deterministic and testable without a feed. The rule that governs all of it:
+  a metric that cannot be computed is `None` and prints as an em dash, **never
+  as zero** — a thin sample must not read as a real number. `backtest/study.py`
+  runs it as a study: it loads the deepest series each frame can offer (the
+  paging Binance feed reaches years, so the sample is long enough to judge), cuts
+  the trades into contiguous out-of-sample windows and scores each one so a
+  result carried by a single stretch of months is exposed as a regime, and puts
+  the whole sample through the matched control so the number is split into skill
+  and drift rather than asserted. New command: `study --tf H1 --windows 5`, with
+  a printable report and a `--json` form. On 833 days of H1 (800 filled trades)
+  it returns **beta**, the same verdict the earlier work reached by hand — now
+  reproduced end to end on a sample twenty times longer.
+- **A matched control for the strategy, so its return can be split into skill
+  and drift.** The historical study concluded the setup is "beta to gold, not
+  skill" from the regime table alone; that conclusion is now measured rather
+  than argued. `backtest/control.py` re-runs the strategy's own trades beside
+  surrogate sets that share *every* frozen field — direction, risk distance,
+  reward-to-risk, cost, fill window, horizon — and differ only in the **entry
+  time**, drawn at random. Two controls defeat two confounds: `random` asks
+  whether the geometry alone was lucky, and `regime` draws only from bars in the
+  trade's *own* trend regime, so the drift it inherited is held constant and
+  only the timing within that regime is free. A cell is called `skill` only when
+  it beats both at α = 0.05; `beta` when it loses to either; `inconclusive`
+  when the sample cannot decide — and `inconclusive` is never printed as a pass.
+  The window the surrogates draw from is the span the real trades occupy, not
+  the whole sample: a control allowed to draw from a different stretch of a
+  trending sample would let a difference in drift read as timing skill. That
+  distinction is not cosmetic — it moved the control's measured false-positive
+  rate on zero-skill entries from **63% to 0%** across a 40-seed panel, and a
+  test now guards it.
+- **`research/study_control.py`** — runs the control over the archive, cell by
+  cell (frame, direction, setup), and prints each verdict with both gaps and
+  both p-values. On the current two-week archive most cells are `inconclusive`
+  (too few fills to judge, reported as such) and the one cell large enough to
+  call — M30 sell — is `beta`, consistent with the earlier finding.
 - **`GOLDBOT_DATA_DIR`, a single root for everything that must outlive the
   process** — the bot's state file and the candle archive. On a host with an
   ephemeral filesystem (Render's free plan among them) a restart used to reset

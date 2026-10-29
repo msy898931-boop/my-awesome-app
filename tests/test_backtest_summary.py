@@ -227,6 +227,32 @@ def test_run_backtest_drops_a_frame_below_the_ninety_bar_floor(monkeypatch):
     assert any("الفريم الأساسي: H1" in n for n in out["notes"])
 
 
+def test_run_backtest_honours_an_explicit_primary_frame(monkeypatch):
+    """``--tf`` must change the walk, not be silently ignored."""
+    import goldbot.backtest.engine as engine
+    import goldbot.data.feed as feed_mod
+
+    seen = {}
+
+    class _Feed:
+        def series(self, tf, bars, prefer_depth=False):
+            return Series(timeframe=tf, bars=_bars(400), source="t"), type(
+                "R", (), {"chosen": "t", "attempts": []}
+            )()
+
+    monkeypatch.setattr(feed_mod, "build_feed", lambda s: _Feed())
+    real_walk = engine._walk
+
+    def _spy(series_by_tf, min_rr, **kw):
+        seen["primary_tf"] = kw.get("primary_tf")
+        return real_walk(series_by_tf, min_rr, **kw)
+
+    monkeypatch.setattr(engine, "_walk", _spy)
+    out = engine.run_backtest(_Settings(), primary_tf="H1")
+    assert seen["primary_tf"] == "H1"
+    assert any("الفريم الأساسي: H1" in n for n in out["notes"])
+
+
 def test_the_cost_constant_is_deliberately_unflattering():
     assert 0 < COST_FRACTION < 0.001
     assert HORIZON_BARS > 0
