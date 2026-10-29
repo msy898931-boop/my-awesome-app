@@ -73,6 +73,23 @@ jobs:
         # from drifting away from the truth unnoticed.
         run: python -m coverage report
 
+  # A committed key is a leaked key: history keeps it even after the line is
+  # deleted. The scan runs on every change so a secret is caught at the door,
+  # not discovered after it has already been pushed.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history, so a secret added and then removed in a later commit
+          # is still found.
+          fetch-depth: 0
+
+      - name: Scan for committed secrets (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # The image is a shipped artefact, so it is built on every change rather
   # than discovered to be broken at deploy time. Nothing is pushed: the check
   # is that the multi-stage build succeeds and the resulting container starts
@@ -81,7 +98,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
       - name: Build the image
         run: docker build -t goldbot:ci .
 

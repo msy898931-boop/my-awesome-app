@@ -35,9 +35,13 @@ jobs:
           HEALTH_URL: ${{ vars.RENDER_HEALTH_URL }}
         run: |
           set -u
+          # No URL configured means there is no service to keep awake — the
+          # workflow is inert, not broken. Skipping (exit 0) rather than failing
+          # keeps a scheduled job that has nothing to do from painting a red X
+          # on every run; a real failure below still fails the job.
           if [ -z "${HEALTH_URL:-}" ]; then
-            echo "RENDER_HEALTH_URL is not set; nothing to ping."
-            exit 1
+            echo "::notice::RENDER_HEALTH_URL is not set; nothing to ping."
+            exit 0
           fi
           # Three tries: the first request may be what wakes a spun-down
           # service, which takes about a minute.
