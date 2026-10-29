@@ -29,6 +29,8 @@ reproduced is not a study.
 
 from __future__ import annotations
 
+import time
+
 from ..config import Settings
 from .control import CONTROL, skill_test
 from .engine import _walk
@@ -87,6 +89,7 @@ def run_study(
             "primary_tf": primary_tf or "?",
             "bars": 0,
             "span_days": 0,
+            "period": None,
             "windows": 0,
             "metrics": metrics([]),
             "equity_curve": [],
@@ -112,6 +115,17 @@ def run_study(
     }
 
     span_days = round((primary[-1].time - primary[0].time) / 86400) if len(primary) > 1 else 0
+    # The calendar the sample actually covers. "833 days" says nothing about
+    # *which* 833 — and a strategy's result is only meaningful against the
+    # regime it was measured in, so the dates travel with the number.
+    period = (
+        (
+            time.strftime("%Y-%m-%d", time.gmtime(primary[0].time)),
+            time.strftime("%Y-%m-%d", time.gmtime(primary[-1].time)),
+        )
+        if len(primary) > 1
+        else None
+    )
     verdict = skill_test(trades, primary, n=n_control)
 
     # The headline verdict is an average over every setup, so a single real edge
@@ -128,6 +142,7 @@ def run_study(
         "primary_tf": primary_tf,
         "bars": len(primary),
         "span_days": span_days,
+        "period": period,
         "windows": window_count,
         "metrics": metrics(trades),
         "equity_curve": equity_curve(trades),

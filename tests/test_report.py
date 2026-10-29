@@ -78,6 +78,45 @@ def test_profit_factor_is_none_when_there_are_no_losses():
     assert m["payoff"] is None
 
 
+def test_win_rate_counts_a_target_hit_and_not_a_positive_timeout():
+    """A win is the target; a timeout that merely closed up is not one.
+
+    The numerator and the denominator both use the target/stop binary, so a
+    positive timeout is in neither — the same rule the walk engine applies.
+    """
+    trades = [
+        _t(2.0),  # win  — target
+        _t(-1.0),  # loss — stop
+        Trade(3, 3, "buy", 2000.0, 1990.0, 2020.0, 2.0, "s", outcome="timeout", r_multiple=0.4),
+    ]
+    m = metrics(trades)
+    assert m["win_rate"] == 0.5  # 1 win of 2 decided, not 2 of 3
+    # The timeout still carries money, so it belongs in total R and in PF.
+    assert m["total_r"] == 1.4
+    assert round(m["profit_factor"], 3) == round(2.4 / 1.0, 3)
+
+
+def test_metrics_win_rate_agrees_with_the_engine_summary():
+    """One name must not mean two things across the two reporting layers."""
+    from goldbot.backtest.engine import BacktestReport, _summarise
+
+    trades = [
+        _t(2.0),
+        _t(-1.0),
+        Trade(3, 3, "buy", 2000.0, 1990.0, 2020.0, 2.0, "s", outcome="timeout", r_multiple=0.4),
+    ]
+    report = _summarise(BacktestReport(symbol="XAUUSD", bars_tested=100, signals=0), trades)
+    assert metrics(trades)["win_rate"] == report.win_rate
+
+
+def test_payoff_is_the_ratio_of_the_win_and_loss_averages():
+    # Wins +2, +2 (avg 2); losses -1, -3 (avg -2): payoff = 2 / 2 = 1.
+    m = metrics([_t(2.0), _t(2.0), _t(-1.0), _t(-3.0)])
+    assert m["avg_win_r"] == 2.0
+    assert m["avg_loss_r"] == -2.0
+    assert m["payoff"] == 1.0
+
+
 def test_max_drawdown_is_the_worst_peak_to_trough():
     # +1, +1 (=2), -1, -1, -1 (=-1), +0.5. Peak 2, trough -1 → -3.
     rs = [1.0, 1.0, -1.0, -1.0, -1.0, 0.5]
@@ -194,6 +233,7 @@ def _result():
         "primary_tf": "H1",
         "bars": 200,
         "span_days": 30,
+        "period": ("2024-01-01", "2024-01-31"),
         "windows": 2,
         "metrics": metrics(trades),
         "consistency": consistency(windows(trades, 2)),
@@ -217,6 +257,17 @@ def test_the_report_includes_the_control_verdict_and_the_consistency_line():
     assert "حزمة السيطرة" in text
     assert "الثبات عبر الزمن" in text
     assert "XAUUSD" in text
+
+
+def test_the_report_names_the_sample_period():
+    text = format_report(_result())
+    assert "2024-01-01" in text and "2024-01-31" in text
+
+
+def test_the_report_explains_the_outcome_split():
+    """The win-rate denominator is smaller than n; the split says why."""
+    text = format_report(_result())
+    assert "ربح" in text and "خسارة" in text and "مهلة" in text
 
 
 def test_the_report_prints_the_per_setup_verdict():

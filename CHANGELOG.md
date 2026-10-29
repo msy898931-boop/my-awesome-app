@@ -25,6 +25,18 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   standalone SVG — both from `backtest/chart.py`, with no plotting
   dependency. The zero line is drawn only when the curve crosses it, so its
   absence is itself information; an empty curve is named, never drawn.
+### Fixed
+- **`نسبة النجاح` meant two different things in two layers.** The metric
+  block (`report.metrics`, behind `cli study`) counted a win as *positive R*,
+  which swept in timeouts that merely closed up, while the walk engine's own
+  summary (`cli backtest`) counted a win as *the target being hit*. The same
+  name gave two numbers for the same run. Both now use the target/stop
+  binary, so a timeout is a win in neither; profit factor still partitions on
+  the sign of R, because it is money over every filled trade. A new
+  `الحصيلة` line prints the win/loss/timeout split, so the smaller win-rate
+  denominator is explained rather than mysterious, and the sample now carries
+  its **calendar dates** (`2024-07-18 → 2026-10-29`), because "833 days"
+  says nothing about which 833 the result was measured in.
 
 ### Fixed
 - **A rate-limited calendar silently withheld every trade idea.** The economic

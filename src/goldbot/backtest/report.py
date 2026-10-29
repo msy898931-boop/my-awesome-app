@@ -48,6 +48,9 @@ def metrics(trades: Sequence[Trade]) -> dict:
     out: dict = {
         "n": len(filled),
         "no_fill": len(trades) - len(filled),
+        "wins": None,
+        "losses": None,
+        "timeouts": None,
         "win_rate": None,
         "expectancy": None,
         "profit_factor": None,
@@ -66,20 +69,29 @@ def metrics(trades: Sequence[Trade]) -> dict:
         return out
 
     rs = [t.r_multiple for t in filled]
-    wins = [r for r in rs if r > 0]
-    losses = [r for r in rs if r < 0]
-    decided = len(wins) + len(losses)
-    gross_win = sum(wins)
-    gross_loss = abs(sum(losses))
+    # A "win" means the target was reached — the same binary the walk engine
+    # reports — so a timeout that merely closed at a positive mark is not a win.
+    # Two layers that call the same number by the same name must not disagree.
+    won = [t for t in filled if t.outcome == "win"]
+    lost = [t for t in filled if t.outcome == "loss"]
+    decided = len(won) + len(lost)
 
-    out["win_rate"] = round(len(wins) / decided, 4) if decided else None
+    out["wins"] = len(won)
+    out["losses"] = len(lost)
+    out["timeouts"] = len(filled) - len(won) - len(lost)
+    out["win_rate"] = round(len(won) / decided, 4) if decided else None
     out["expectancy"] = round(statistics.mean(rs), 4)
     out["total_r"] = round(sum(rs), 2)
+    # Profit factor is money over every filled trade, so its partitions are the
+    # sign of R, not the outcome: a timeout that closed up is gross profit and
+    # one that closed down is gross loss, or the factor would not match the curve.
+    gross_win = sum(r for r in rs if r > 0)
+    gross_loss = abs(sum(r for r in rs if r < 0))
     out["profit_factor"] = round(gross_win / gross_loss, 3) if gross_loss else None
-    out["avg_win_r"] = round(statistics.mean(wins), 3) if wins else None
-    out["avg_loss_r"] = round(statistics.mean(losses), 3) if losses else None
-    if wins and losses:
-        out["payoff"] = round(statistics.mean(wins) / abs(statistics.mean(losses)), 3)
+    out["avg_win_r"] = round(statistics.mean([t.r_multiple for t in won]), 3) if won else None
+    out["avg_loss_r"] = round(statistics.mean([t.r_multiple for t in lost]), 3) if lost else None
+    if won and lost:
+        out["payoff"] = round(out["avg_win_r"] / abs(out["avg_loss_r"]), 3)
 
     out["max_drawdown_r"] = _max_drawdown(rs)
     out["longest_loss_streak"] = _longest_loss_streak(rs)
@@ -208,7 +220,10 @@ def format_report(result: dict) -> str:
     lines.append(
         f"  الشموع: {result['bars']} | الصفقات: {m['n']} (استُثنيت {m['no_fill']} بلا تنفيذ)"
     )
-    lines.append(f"  النافذة الزمنية: {result['span_days']} يوم | نوافذ: {result['windows']}")
+    span = f"{result['span_days']} يوم"
+    if result.get("period"):
+        span += f" ({result['period'][0]} → {result['period'][1]})"
+    lines.append(f"  النافذة الزمنية: {span} | نوافذ: {result['windows']}")
     lines.append("")
     lines.append("  ── المقاييس الرئيسية ──")
     lines.append(f"    التوقّع (Expectancy)     : {_fmt(m['expectancy'])} R للصفقة")
@@ -216,6 +231,11 @@ def format_report(result: dict) -> str:
     lines.append(
         f"    نسبة النجاح              : {_fmt(m['win_rate'] and m['win_rate'] * 100, 1, '%', signed=False)}"
     )
+    if m.get("wins") is not None:
+        lines.append(
+            f"    الحصيلة                  : {m['wins']} ربح · {m['losses']} خسارة · "
+            f"{m['timeouts']} مهلة (المهلة تُحتسب في R و PF لا في نسبة النجاح)"
+        )
     lines.append(f"    معامل الربح (PF)         : {_fmt(m['profit_factor'], signed=False)}")
     lines.append(f"    متوسط الربح / الخسارة   : {_fmt(m['avg_win_r'])} / {_fmt(m['avg_loss_r'])}")
     lines.append(f"    نسبة العائد (Payoff)     : {_fmt(m['payoff'], signed=False)}")
