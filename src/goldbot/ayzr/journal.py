@@ -35,14 +35,25 @@ from ..models import Bar
 from .config import AyzrSettings
 
 
-def signal_key(direction: str, setup: str) -> str:
-    """Identity of an idea: direction + setup.
+def idea_key(rec: dict) -> str:
+    """Identity of an idea: direction + the zone the entry sits on.
 
     Deliberately **not** the entry price. Entry, stop and target drift bar to
     bar, so keying on them makes one idea look new almost every cycle — which is
     how the main bot once emitted eight cards in forty minutes, all "buy".
+
+    The zone is the right second component because the validator only accepts a
+    trade whose entry sits on a real FVG, order block or structural level, and
+    those names are stable while the price around them moves. The model's own
+    ``thesis`` prose is *not* used: it is regenerated on every call, so it would
+    make the same idea look new each time.
     """
-    return f"{direction}:{setup}"
+    return f"{rec.get('direction')}:{rec.get('zone_key') or ''}"
+
+
+def open_ideas(settings: AyzrSettings) -> set[str]:
+    """The identities of ideas currently open (logged, not yet resolved)."""
+    return {idea_key(r) for r in open_signals(settings)}
 
 
 def append(settings: AyzrSettings, record: dict) -> None:
@@ -114,6 +125,7 @@ def log_signal(
         "target": trade["target"],
         "rr": trade["rr"],
         "zone": trade.get("zone", ""),
+        "zone_key": trade.get("zone_key", ""),
         "why": trade.get("why", ""),
         "confidence": decision.confidence,
         "model": decision.model,
@@ -285,10 +297,11 @@ def compact(settings: AyzrSettings) -> None:
 __all__ = [
     "append",
     "compact",
+    "idea_key",
     "log_no_trade",
     "log_signal",
+    "open_ideas",
     "open_signals",
     "read_all",
     "resolve_open",
-    "signal_key",
 ]

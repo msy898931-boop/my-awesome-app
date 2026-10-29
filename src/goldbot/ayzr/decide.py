@@ -149,6 +149,10 @@ def validate_trade(trade: dict, facts: dict, min_rr: float) -> tuple[dict, list[
             "target": round(target, 5),
             "rr": round(rr, 3),
             "zone": _s(trade.get("zone")),
+            # The zone the *arithmetic* found, not the text the model wrote.
+            # Stable across calls, so it is what identifies an idea in the
+            # journal; the model's own ``zone`` label is kept only for display.
+            "zone_key": zone,
             "why": _s(trade.get("why")),
             "validated": True,
         },

@@ -21,9 +21,18 @@ from .cards import format_decision, format_report
 from .config import AyzrSettings
 from .decide import Decision, decide, validate_trade
 from .engine import Engine, Run
-from .journal import log_no_trade, log_signal, open_signals, read_all, resolve_open
+from .journal import (
+    idea_key,
+    log_no_trade,
+    log_signal,
+    open_ideas,
+    open_signals,
+    read_all,
+    resolve_open,
+)
 from .read import Read, read_market
 from .report import Report, build_report, compute, verdict
+from .runner import ShadowRunner, interval_for
 
 __all__ = [
     "AyzrSettings",
@@ -32,13 +41,17 @@ __all__ = [
     "Read",
     "Report",
     "Run",
+    "ShadowRunner",
     "build_report",
     "compute",
     "decide",
     "format_decision",
     "format_report",
+    "idea_key",
+    "interval_for",
     "log_no_trade",
     "log_signal",
+    "open_ideas",
     "open_signals",
     "read_all",
     "read_market",

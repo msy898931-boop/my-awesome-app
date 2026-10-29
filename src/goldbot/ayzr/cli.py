@@ -7,12 +7,15 @@ default. Every subcommand is usable on its own:
   * ``report``  — the journal's tally: today, all time, and the sample verdict.
   * ``resolve`` — settle open signals against the bars that have formed, no
     model call, so the outcome side costs nothing.
+  * ``loop``    — the shadow runner: a pass per bar, until interrupted. This is
+    what makes the one-month test a test.
   * ``journal`` — the raw records, for inspection.
 
 Usage::
 
     PYTHONPATH=src python3 -m goldbot.ayzr.cli analyse
     PYTHONPATH=src python3 -m goldbot.ayzr.cli report
+    PYTHONPATH=src python3 -m goldbot.ayzr.cli loop
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from .cards import format_decision, format_report
 from .config import AyzrSettings
 from .engine import Engine
 from .journal import read_all
+from .runner import ShadowRunner, interval_for
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -35,11 +39,22 @@ def _parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="analyse",
-        choices=["analyse", "analyze", "report", "resolve", "journal"],
+        choices=["analyse", "analyze", "report", "resolve", "journal", "loop"],
         help="what to do",
     )
     p.add_argument("--no-ai", action="store_true", help="skip the model, resolve only")
     p.add_argument("--json", action="store_true", help="print the raw record as JSON")
+    p.add_argument(
+        "--interval",
+        type=int,
+        default=0,
+        help="seconds between passes in `loop` (0 = one bar of AYZR_TF)",
+    )
+    p.add_argument(
+        "--once",
+        action="store_true",
+        help="with `loop`, run a single pass and exit — for a cron or a smoke test",
+    )
     return p
 
 
@@ -94,6 +109,23 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "resolve":
         n = engine.resolve_only()
         print(f"حُسمت {n} إشارة.")
+        return 0
+
+    if args.command == "loop":
+        if args.once:
+            # One pass and out: the shape a cron entry wants, and the shape a
+            # smoke test wants. No thread, no sleep.
+            runner = ShadowRunner(settings)
+            print(runner.run_once())
+            return 0
+        runner = ShadowRunner(settings)
+        if args.interval:
+            runner.interval = interval_for(settings.primary_tf, args.interval)
+        print(f"AYZR يعمل — دورة كل {runner.interval} ثانية. أوقفه بـ Ctrl+C.")
+        try:
+            runner.run_forever()
+        except KeyboardInterrupt:
+            print("توقّف.")
         return 0
 
     # journal

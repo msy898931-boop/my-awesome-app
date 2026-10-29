@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from .client import AiBudgetError, AiClient, parse_json
 from .config import AyzrSettings
 from .decide import Decision, decide
-from .journal import log_no_trade, log_signal, resolve_open
+from .journal import idea_key, log_no_trade, log_signal, open_ideas, resolve_open
 from .prompt import SYSTEM_PROMPT, build_prompt
 from .read import Read, read_market
 from .report import Report, build_report
@@ -42,6 +42,10 @@ class Run:
     journalled: dict | None = None
     resolved: int = 0
     error: str = ""
+    # The idea key that was already open, when a valid trade was *not* written
+    # again. Named so a caller can say "same idea, still resting" rather than
+    # reporting a silent no-op as a fresh signal.
+    skipped: str = ""
 
     @property
     def price(self) -> float | None:
@@ -93,7 +97,17 @@ class Engine:
         if journal:
             price = out.price
             if decision.has_trade:
-                out.journalled = log_signal(settings, decision, out.read.facts, price=price)
+                key = idea_key(decision.trade)
+                # An idea already open is the same idea, not a new signal. The
+                # entry drifts bar to bar, so without this check one resting
+                # idea is journalled on every cycle — and the report, which
+                # counts each line as a signal, would reach its sample floor on
+                # a handful of real ideas. The main bot learned this the hard
+                # way; AYZR gets the guard before its first sample.
+                if key in open_ideas(settings):
+                    out.skipped = key
+                else:
+                    out.journalled = log_signal(settings, decision, out.read.facts, price=price)
             elif decision.configured:
                 out.journalled = log_no_trade(settings, decision, price=price)
 

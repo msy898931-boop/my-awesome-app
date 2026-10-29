@@ -35,3 +35,17 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      # ── AYZR shadow test ────────────────────────────────────────────────
+      # Off until the operator turns it on. The one-month experiment is not a
+      # behaviour the bot should gain by deploying; flip AYZR_ENABLED to "1"
+      # when the test is meant to start. AYZR keeps its own journal and AI
+      # counter under AYZR_DATA_DIR, so the disk already mounted above is
+      # enough — nothing here touches the bot's state.
+      - key: AYZR_ENABLED
+        value: "0"
+      - key: AYZR_DATA_DIR
+        value: /var/data/ayzr
+      # AYZR's own key is recommended: the free tier's daily token budget is
+      # per model *and* per conversation, and sharing the bot's key makes the
+      # two engines compete for one allowance. Set it in the dashboard:
+      #   AYZR_AI_KEY   (falls back to GROQ_API_KEY when unset)

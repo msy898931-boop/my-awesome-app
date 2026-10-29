@@ -436,6 +436,7 @@ class Bot(CommandScreens):
         press could sit unanswered long enough to look broken.
         """
         self._start_health()
+        self._start_ayzr()
         self._register_commands()
         self.install_panel()
         self._log(f"البوت يعمل — كل {self.settings.poll_seconds} ثانية")
@@ -464,6 +465,28 @@ class Bot(CommandScreens):
                 # A bad cycle must not kill the loop; the next one may be fine.
                 self._log(f"دورة {cycle}: خطأ ({type(exc).__name__}: {exc})")
             next_cycle = time.monotonic() + max(1.0, self.settings.poll_seconds)
+
+    def _start_ayzr(self) -> None:
+        """Start the AYZR shadow runner, if and only if it was asked for.
+
+        AYZR is a separate experiment, so it does not start because the bot
+        started. It runs only when ``AYZR_ENABLED`` is set, in its own daemon
+        thread, with its own settings and data root — and any fault in it is
+        caught here, so a broken experiment can never take the bot's cards down
+        with it. That isolation is the whole reason AYZR is a second engine.
+        """
+        try:
+            from ..ayzr.config import AyzrSettings
+            from ..ayzr.runner import ShadowRunner
+
+            ayzr = AyzrSettings()
+            if not ayzr.enabled:
+                return
+            runner = ShadowRunner(ayzr)
+            runner.start_thread()
+            self._log(f"AYZR يعمل بالتوازي — دورة كل {runner.interval} ثانية")
+        except Exception as exc:  # the experiment must never break the bot
+            self._log(f"AYZR: تعذّر البدء ({type(exc).__name__}: {exc})")
 
     def _start_health(self) -> None:
         """Open the health port when the host provides one (Render, Fly, Heroku).

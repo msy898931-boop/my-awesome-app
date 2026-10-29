@@ -32,6 +32,14 @@ def _float(name: str, default: float) -> float:
         return default
 
 
+def _flag(name: str, default: bool) -> bool:
+    """A boolean env var, read the way the rest of the project reads them."""
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _data_root() -> Path:
     """AYZR's own folder, kept apart from the main bot's durable state.
 
@@ -100,6 +108,15 @@ class AyzrSettings:
     # AYZR's *own* daily ceiling. The main bot's cap is 30; AYZR keeps its own
     # counter so a day of AYZR analysis cannot starve the main bot's cards.
     ai_daily_cap: int = field(default_factory=lambda: _int("AYZR_AI_DAILY_CAP", 24))
+
+    # ── the shadow runner ─────────────────────────────────────────────────
+    # Off by default. The one-month test is an experiment, not a behaviour the
+    # bot gains silently: it starts only when AYZR_ENABLED is set, and the bot's
+    # own loop is exactly as it was when it is not.
+    enabled: bool = field(default_factory=lambda: _flag("AYZR_ENABLED", False))
+    # Seconds between passes. 0 means "one bar of ``primary_tf``" — the sane
+    # default, since a pass reads the tape the frame it signals on defines.
+    interval_seconds: int = field(default_factory=lambda: _int("AYZR_INTERVAL_SECONDS", 0))
 
     data_dir: Path = field(default_factory=_data_root)
 

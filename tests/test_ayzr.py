@@ -18,12 +18,13 @@ from goldbot.ayzr.client import AiBudgetError, AiClient, parse_json
 from goldbot.ayzr.config import AyzrSettings
 from goldbot.ayzr.decide import decide, validate_trade
 from goldbot.ayzr.journal import (
+    idea_key,
     log_no_trade,
     log_signal,
+    open_ideas,
     open_signals,
     read_all,
     resolve_open,
-    signal_key,
 )
 from goldbot.ayzr.read import Read
 from goldbot.ayzr.report import Stats, build_report, compute, verdict
@@ -253,9 +254,31 @@ def test_control_direction_is_deterministic_for_a_seed(tmp_path):
     assert a["control"]["direction"] == b["control"]["direction"]
 
 
-def test_signal_key_is_direction_and_setup_not_price():
-    assert signal_key("buy", "CHoCH") == "buy:CHoCH"
-    assert signal_key("buy", "CHoCH") == signal_key("buy", "CHoCH")
+def test_idea_key_is_direction_and_zone_not_price():
+    a = {"direction": "buy", "zone_key": "M15 FVG", "entry": 4000.0}
+    b = {"direction": "buy", "zone_key": "M15 FVG", "entry": 4012.0}
+    assert idea_key(a) == "buy:M15 FVG"
+    # The entry drifted; the idea did not. This is the whole point of the key.
+    assert idea_key(a) == idea_key(b)
+
+
+def test_idea_key_differs_by_direction_and_zone():
+    assert idea_key({"direction": "buy", "zone_key": "M15 FVG"}) != idea_key(
+        {"direction": "sell", "zone_key": "M15 FVG"}
+    )
+    assert idea_key({"direction": "buy", "zone_key": "M15 FVG"}) != idea_key(
+        {"direction": "buy", "zone_key": "H1 OB"}
+    )
+
+
+def test_open_ideas_lists_only_unresolved_signals(tmp_path):
+    s = _settings(tmp_path)
+    log_signal(s, _decision(), _facts(), price=1.0)
+    assert open_ideas(s) == {"buy:M15 FVG"}
+    # A no-trade call is not an idea.
+    d = decide(_facts(), {"trade": {"direction": "none"}}, model="m")
+    log_no_trade(s, d, price=1.0)
+    assert open_ideas(s) == {"buy:M15 FVG"}
 
 
 # ── resolution against real bars ─────────────────────────────────────────
@@ -701,6 +724,103 @@ def test_engine_run_journals_a_validated_trade(tmp_path, monkeypatch):
     assert run.decision.has_trade, run.decision.rejected
     assert run.journalled is not None
     assert read_all(s)
+
+
+def _oscillating_tape(start: int, n: int) -> list[Bar]:
+    """A tape with real swing levels, so a proposed entry can sit on one."""
+    import math
+
+    return [
+        Bar(
+            time=start + i * 900,
+            open=4000 + math.sin(i / 5) * 20,
+            high=4000 + math.sin(i / 5) * 20 + 8,
+            low=4000 + math.sin(i / 5) * 20 - 8,
+            close=4000 + math.sin(i / 5) * 20,
+            volume=1.0,
+        )
+        for i in range(n)
+    ]
+
+
+def test_engine_does_not_journal_the_same_open_idea_twice(tmp_path, monkeypatch):
+    """A resting idea is one signal, however many cycles read it.
+
+    The entry drifts bar to bar, so without a guard the same idea is written on
+    every cycle and the report — which counts each line as a signal — reaches
+    its sample floor on a handful of real ideas.
+    """
+    from goldbot.ayzr.engine import Engine
+
+    s = _settings(tmp_path, ai_key="k")
+    monkeypatch.setattr("goldbot.ayzr.read.news_digest", lambda now, with_macro: {})
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def complete(self, sys_, user):
+            raw = {
+                "bias": "bullish",
+                "scenarios": {"primary": {"thesis": "different prose every call"}},
+                # The last swing low of the oscillating tape, so it validates.
+                "trade": {"direction": "buy", "entry": 3972.0, "stop": 3952.0, "target": 4032.0},
+            }
+            return json.dumps(raw), "fake"
+
+    monkeypatch.setattr("goldbot.ayzr.engine.AiClient", FakeClient)
+    engine = Engine(s, feed=_feed({"M15": _oscillating_tape(1_700_000_000, 80)}))
+
+    first = engine.run(with_ai=True)
+    second = engine.run(with_ai=True)
+
+    assert first.journalled is not None
+    assert second.journalled is None
+    assert second.skipped.startswith("buy:")
+    assert len([r for r in read_all(s) if r["kind"] == "signal"]) == 1
+
+
+def test_engine_journals_a_different_idea_while_the_first_is_open(tmp_path, monkeypatch):
+    """Only the *same* idea is suppressed; a genuinely different one is a signal.
+
+    The tape has two structural levels, so a buy at the low and a sell at the
+    high are two distinct ideas — the second must be journalled.
+    """
+    from goldbot.ayzr.engine import Engine
+
+    s = _settings(tmp_path, ai_key="k")
+    monkeypatch.setattr("goldbot.ayzr.read.news_digest", lambda now, with_macro: {})
+
+    calls = {"n": 0}
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def complete(self, sys_, user):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                trade = {"direction": "buy", "entry": 3972.0, "stop": 3952.0, "target": 4032.0}
+            else:
+                trade = {"direction": "sell", "entry": 4028.0, "stop": 4048.0, "target": 3968.0}
+            raw = {
+                "bias": "bullish",
+                "scenarios": {"primary": {"thesis": "t"}},
+                "trade": trade,
+            }
+            return json.dumps(raw), "fake"
+
+    monkeypatch.setattr("goldbot.ayzr.engine.AiClient", FakeClient)
+    engine = Engine(s, feed=_feed({"M15": _oscillating_tape(1_700_000_000, 80)}))
+
+    first = engine.run(with_ai=True)
+    second = engine.run(with_ai=True)
+
+    assert first.journalled is not None
+    assert second.journalled is not None
+    assert second.skipped == ""
+    keys = {r["zone_key"] for r in read_all(s) if r["kind"] == "signal"}
+    assert keys == {"M15 قاع", "M15 قمة"}
 
 
 def test_engine_run_records_no_trade(tmp_path, monkeypatch):
@@ -1353,9 +1473,269 @@ def test_open_count_counts_only_unresolved(tmp_path):
     assert open_count(s) == 1
 
 
+def test_runner_reports_no_read_when_the_tape_is_missing(tmp_path, monkeypatch):
+    from goldbot.ayzr.runner import ShadowRunner
+
+    s = _settings(tmp_path)
+    runner = ShadowRunner(s, feed=_feed({}))
+    assert runner.run_once() == "لا قراءة"
+
+
+def test_runner_reports_no_trade(tmp_path, monkeypatch):
+    from goldbot.ayzr.runner import ShadowRunner
+
+    s = _settings(tmp_path, ai_key="k")
+    monkeypatch.setattr("goldbot.ayzr.read.news_digest", lambda now, with_macro: {})
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def complete(self, sys_, user):
+            return json.dumps({"trade": {"direction": "none"}, "bias": "neutral"}), "fake"
+
+    monkeypatch.setattr("goldbot.ayzr.engine.AiClient", FakeClient)
+    runner = ShadowRunner(s, feed=_feed({"M15": _oscillating_tape(1_700_000_000, 80)}))
+    assert runner.run_once() == "لا صفقة"
+
+
+def test_runner_start_thread_returns_a_live_daemon(tmp_path, monkeypatch):
+    from goldbot.ayzr.runner import ShadowRunner
+
+    s = _settings(tmp_path)
+    runner = ShadowRunner(s)
+    monkeypatch.setattr(runner, "run_once", lambda: "لا جديد")
+    runner.interval = 3600
+    thread = runner.start_thread()
+    assert thread.daemon is True
+    assert thread.is_alive()
+
+
+def test_runner_forever_without_a_stop_runs_and_sleeps(tmp_path, monkeypatch):
+    """The no-event form runs a pass then sleeps; stop it after one full cycle."""
+    from goldbot.ayzr import runner as runner_mod
+
+    s = _settings(tmp_path)
+    r = runner_mod.ShadowRunner(s)
+    calls = {"n": 0}
+
+    def fake_once():
+        calls["n"] += 1
+        return "لا جديد"
+
+    slept = {"v": False}
+
+    def fake_sleep(_seconds):
+        # The pass has happened; break the loop from inside the sleep so the
+        # sleep itself is exercised, not skipped.
+        slept["v"] = True
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(r, "run_once", fake_once)
+    monkeypatch.setattr(runner_mod.time, "sleep", fake_sleep)
+    with pytest.raises(KeyboardInterrupt):
+        r.run_forever()
+    assert calls["n"] == 1
+    assert slept["v"] is True
+
+
 def test_cli_report_json(tmp_path, monkeypatch, capsys):
     from goldbot.ayzr import cli
 
     monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
     assert cli.main(["report", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["total"]["n"] == 0
+
+
+# ── the shadow runner: the clock the month-long test needs ───────────────
+
+
+def _fake_bot(tmp_path, settings):
+    """A Bot with no token and no socket — enough to test its wiring only."""
+    from goldbot.telegram.bot import Bot
+
+    class Recorder:
+        def answer_callback(self, *a, **k):
+            pass
+
+        def send(self, *a, **k):
+            return True
+
+        def get_updates(self, *a, **k):
+            return []
+
+    return Bot(settings, state_path=str(tmp_path / "state.json"), tg=Recorder())
+
+
+def test_interval_follows_the_frame_ayzr_signals_on():
+    from goldbot.ayzr.runner import interval_for
+
+    assert interval_for("M15") == 900
+    assert interval_for("H1") == 3600
+    assert interval_for("m5") == 300
+    # An unknown frame must not guess, and a typo must not spin the loop.
+    assert interval_for("M7") == 900
+    assert interval_for("M15", override=5) == 60
+
+
+def test_runner_reports_a_signal_and_journals_it(tmp_path, monkeypatch):
+    from goldbot.ayzr.runner import ShadowRunner
+
+    s = _settings(tmp_path, ai_key="k")
+    monkeypatch.setattr("goldbot.ayzr.read.news_digest", lambda now, with_macro: {})
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def complete(self, sys_, user):
+            raw = {
+                "bias": "bullish",
+                "scenarios": {"primary": {"thesis": "t"}},
+                "trade": {"direction": "buy", "entry": 3972.0, "stop": 3952.0, "target": 4032.0},
+            }
+            return json.dumps(raw), "fake"
+
+    monkeypatch.setattr("goldbot.ayzr.engine.AiClient", FakeClient)
+    runner = ShadowRunner(s, feed=_feed({"M15": _oscillating_tape(1_700_000_000, 80)}))
+
+    line = runner.run_once()
+    assert line.startswith("إشارة:")
+    assert runner.passes == 1
+    assert len([r for r in read_all(s) if r["kind"] == "signal"]) == 1
+
+
+def test_runner_says_the_idea_is_already_open(tmp_path, monkeypatch):
+    from goldbot.ayzr.runner import ShadowRunner
+
+    s = _settings(tmp_path, ai_key="k")
+    monkeypatch.setattr("goldbot.ayzr.read.news_digest", lambda now, with_macro: {})
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def complete(self, sys_, user):
+            raw = {
+                "bias": "bullish",
+                "scenarios": {"primary": {"thesis": "drifts every call"}},
+                "trade": {"direction": "buy", "entry": 3972.0, "stop": 3952.0, "target": 4032.0},
+            }
+            return json.dumps(raw), "fake"
+
+    monkeypatch.setattr("goldbot.ayzr.engine.AiClient", FakeClient)
+    runner = ShadowRunner(s, feed=_feed({"M15": _oscillating_tape(1_700_000_000, 80)}))
+
+    runner.run_once()
+    second = runner.run_once()
+    assert second.startswith("فكرة مفتوحة")
+    assert len([r for r in read_all(s) if r["kind"] == "signal"]) == 1
+
+
+def test_runner_survives_a_failing_pass(tmp_path, monkeypatch):
+    """A pass that raises must be reported, not propagated: a dead clock stops
+    collecting silently, which is the one failure a month-long test cannot see."""
+    from goldbot.ayzr.runner import ShadowRunner
+
+    s = _settings(tmp_path, ai_key="k")
+    runner = ShadowRunner(s)
+
+    def boom(*a, **k):
+        raise RuntimeError("network died")
+
+    monkeypatch.setattr(runner.engine, "run", boom)
+    line = runner.run_once()
+    assert "خطأ" in line
+    assert runner.passes == 0
+
+
+def test_runner_forever_stops_on_the_event(tmp_path, monkeypatch):
+    """The loop must end when asked, without waiting a whole bar to notice."""
+    import threading
+
+    from goldbot.ayzr.runner import ShadowRunner
+
+    s = _settings(tmp_path, ai_key="k")
+    runner = ShadowRunner(s)
+    runner.interval = 3600  # a bar; the stop must not wait for it
+    monkeypatch.setattr(runner, "run_once", lambda: "لا جديد")
+
+    stop = threading.Event()
+    thread = threading.Thread(target=runner.run_forever, args=(stop,), daemon=True)
+    thread.start()
+    stop.set()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+
+
+def test_cli_loop_once_runs_a_single_pass(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setattr("goldbot.ayzr.runner.ShadowRunner.run_once", lambda self: "لا جديد")
+    assert cli.main(["loop", "--once"]) == 0
+    assert "لا جديد" in capsys.readouterr().out
+
+
+def test_cli_loop_with_interval_stops_on_keyboard_interrupt(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+
+    def boom(self, *a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("goldbot.ayzr.runner.ShadowRunner.run_forever", boom)
+    assert cli.main(["loop", "--interval", "60"]) == 0
+    out = capsys.readouterr().out
+    assert "توقّف." in out
+    # The override reached the runner: 60, not the frame default.
+    assert "60" in out
+
+
+def test_cli_loop_uses_the_frame_default_interval(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setattr("goldbot.ayzr.runner.ShadowRunner.run_forever", lambda self, *a, **k: None)
+    assert cli.main(["loop"]) == 0
+    assert "900" in capsys.readouterr().out
+
+
+def test_cli_journal_lists_rows(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    assert cli.main(["journal"]) == 0
+    assert "سطر في الدفتر" in capsys.readouterr().out
+
+
+def test_bot_does_not_start_ayzr_unless_asked(tmp_path, monkeypatch):
+    """The bot's default must be unchanged: no flag, no second engine."""
+    from goldbot.config import Settings
+
+    monkeypatch.delenv("AYZR_ENABLED", raising=False)
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    bot = _fake_bot(tmp_path, Settings())
+    started: list[str] = []
+    monkeypatch.setattr(
+        "goldbot.ayzr.runner.ShadowRunner.start_thread",
+        lambda self: started.append("x"),
+    )
+    bot._start_ayzr()
+    assert started == []
+
+
+def test_bot_starts_ayzr_when_the_flag_is_set(tmp_path, monkeypatch):
+    from goldbot.config import Settings
+
+    monkeypatch.setenv("AYZR_ENABLED", "1")
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    bot = _fake_bot(tmp_path, Settings())
+    started: list[str] = []
+    monkeypatch.setattr(
+        "goldbot.ayzr.runner.ShadowRunner.start_thread",
+        lambda self: started.append("x"),
+    )
+    bot._start_ayzr()
+    assert started == ["x"]
