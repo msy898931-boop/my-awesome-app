@@ -44,8 +44,13 @@ def _parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="analyse",
-        choices=["analyse", "analyze", "report", "resolve", "journal", "loop", "bot"],
+        choices=["analyse", "analyze", "report", "resolve", "journal", "loop", "bot", "chat-id"],
         help="what to do",
+    )
+    p.add_argument(
+        "--token",
+        default="",
+        help="bot token for `chat-id` (defaults to AYZR_TELEGRAM_BOT_TOKEN)",
     )
     p.add_argument("--no-ai", action="store_true", help="skip the model, resolve only")
     p.add_argument("--json", action="store_true", help="print the raw record as JSON")
@@ -146,6 +151,9 @@ def main(argv: list[str] | None = None) -> int:
         AyzrBot(settings).run_forever()
         return 0
 
+    if args.command == "chat-id":
+        return _chat_id(args.token or settings.telegram_token)
+
     # journal
     rows = read_all(settings)
     print(
@@ -153,6 +161,58 @@ def main(argv: list[str] | None = None) -> int:
         if args.json
         else f"{len(rows)} سطر في الدفتر."
     )
+    return 0
+
+
+def _chat_id(token: str) -> int:
+    """Tell the operator which chat AYZR's own bot should answer.
+
+    A bot cannot message a chat it has never heard from, and the chat id is not
+    something the BotFather hands out — it only appears in an update. So this
+    reads the bot's identity, then its pending updates, and prints the ids it
+    finds. The token is used but never echoed.
+    """
+    from ..telegram.client import Telegram, TelegramError
+
+    if not token.strip():
+        print("ما في توكن. مرّره بـ --token أو اضبط AYZR_TELEGRAM_BOT_TOKEN.", file=sys.stderr)
+        return 2
+    try:
+        tg = Telegram(token)
+        who = tg.me()
+    except TelegramError as exc:
+        print(f"التوكن مرفوض: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"البوت: @{who.get('username', '?')} ({who.get('first_name', '')})")
+    updates = tg.updates()
+    if not updates:
+        print(
+            "ما في رسائل بعد. افتح محادثة البوت الجديد، ابعتله أي كلمة (أو /start)،\n"
+            "وبعدها شغّل الأمر مرة تانية."
+        )
+        return 1
+
+    seen: dict[str, str] = {}
+    for upd in updates:
+        for key in ("message", "edited_message", "callback_query"):
+            node = upd.get(key)
+            if not isinstance(node, dict):
+                continue
+            chat = node.get("chat") or (node.get("message") or {}).get("chat") or {}
+            cid = chat.get("id")
+            if cid is None:
+                continue
+            label = chat.get("title") or chat.get("username") or chat.get("first_name") or ""
+            seen[str(cid)] = label
+    if not seen:
+        print("وصلت تحديثات بس ما فيها معرّف محادثة. ابعت رسالة نصية عادية للبوت.")
+        return 1
+
+    print("\nمعرّفات المحادثة:")
+    for cid, label in seen.items():
+        print(f"  AYZR_TELEGRAM_CHAT_ID={cid}    ({label})")
+    print("\nحُط المعرّف بـ .env أو بأسرار خدمة AYZR.")
     return 0
 
 

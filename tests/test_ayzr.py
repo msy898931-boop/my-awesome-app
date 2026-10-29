@@ -2169,3 +2169,86 @@ def test_ayzr_bot_state_load_tolerates_a_corrupt_file(tmp_path, monkeypatch):
     state.write_text("{ not json")
     bot = AyzrBot(AyzrSettings(), tg=_Recorder(), state_path=state)
     assert bot._offset is None
+
+
+# ── chat-id discovery ────────────────────────────────────────────────────
+
+
+class _FakeTg:
+    """A stand-in for the Telegram client: identity plus canned updates."""
+
+    def __init__(self, token, updates=None, me=None, fail=False):
+        _FakeTg.last_token = token
+        self._updates = updates or []
+        self._me = me or {"username": "ayzr_bot", "first_name": "AYZR"}
+        self._fail = fail
+
+    def me(self):
+        from goldbot.telegram.client import TelegramError
+
+        if self._fail:
+            raise TelegramError("Unauthorized")
+        return self._me
+
+    def updates(self, offset=None, timeout=0):
+        return self._updates
+
+
+def test_cli_chat_id_needs_a_token(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.delenv("AYZR_TELEGRAM_BOT_TOKEN", raising=False)
+    assert cli.main(["chat-id"]) == 2
+    assert "توكن" in capsys.readouterr().err
+
+
+def test_cli_chat_id_reports_a_rejected_token(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setattr("goldbot.telegram.client.Telegram", lambda t: _FakeTg(t, fail=True))
+    assert cli.main(["chat-id", "--token", "bad"]) == 2
+    assert "مرفوض" in capsys.readouterr().err
+
+
+def test_cli_chat_id_asks_for_a_first_message(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setattr("goldbot.telegram.client.Telegram", lambda t: _FakeTg(t, updates=[]))
+    assert cli.main(["chat-id", "--token", "t"]) == 1
+    assert "ما في رسائل" in capsys.readouterr().out
+
+
+def test_cli_chat_id_prints_the_chat_id(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    updates = [{"message": {"chat": {"id": -1001234567890, "title": "AYZR"}}}]
+    monkeypatch.setattr("goldbot.telegram.client.Telegram", lambda t: _FakeTg(t, updates=updates))
+    assert cli.main(["chat-id", "--token", "t"]) == 0
+    out = capsys.readouterr().out
+    assert "AYZR_TELEGRAM_CHAT_ID=-1001234567890" in out
+
+
+def test_cli_chat_id_ignores_updates_without_a_chat(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    updates = [{"message": {"text": "hi"}}]
+    monkeypatch.setattr("goldbot.telegram.client.Telegram", lambda t: _FakeTg(t, updates=updates))
+    assert cli.main(["chat-id", "--token", "t"]) == 1
+    assert "معرّف محادثة" in capsys.readouterr().out
+
+
+def test_cli_chat_id_reads_the_token_from_the_environment(tmp_path, monkeypatch, capsys):
+    from goldbot.ayzr import cli
+
+    monkeypatch.setenv("AYZR_DATA_DIR", str(tmp_path / "ayzr"))
+    monkeypatch.setenv("AYZR_TELEGRAM_BOT_TOKEN", "env-token")
+    updates = [{"message": {"chat": {"id": 42, "username": "me"}}}]
+    monkeypatch.setattr("goldbot.telegram.client.Telegram", lambda t: _FakeTg(t, updates=updates))
+    assert cli.main(["chat-id"]) == 0
+    assert _FakeTg.last_token == "env-token"
+    assert "AYZR_TELEGRAM_CHAT_ID=42" in capsys.readouterr().out

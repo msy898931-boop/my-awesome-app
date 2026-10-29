@@ -111,6 +111,18 @@ monitor can tell the two engines apart when one of them is down. Its command
 offset lives in its own state file under `AYZR_DATA_DIR`, so the two loops
 never consume each other's updates.
 
+**Finding the chat id.** BotFather gives a token, not a chat id, and a bot
+cannot message a chat it has never heard from. Message the new bot once, then:
+
+```bash
+PYTHONPATH=src python3 -m goldbot.ayzr.cli chat-id --token <the new token>
+# → AYZR_TELEGRAM_CHAT_ID=-1001234567890    (AYZR)
+```
+
+It reads the bot's identity and its pending updates and prints the ids it
+finds. The token is used but never echoed. With `AYZR_TELEGRAM_BOT_TOKEN` set,
+`--token` can be omitted.
+
 In the **main** bot, AYZR also has its own row on the panel: **🤖 تحليل AYZR**
 runs a full pass, **📒 دفتر AYZR** shows the journal report. Both are reached
 only through the `ayzr:` namespace, so an AYZR button can never collide with a
