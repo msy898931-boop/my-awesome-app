@@ -11,7 +11,8 @@ from __future__ import annotations
 HELP = (
     "🥇 *بوت الذهب — SMC/ICT*\n\n"
     "⌨️ *لوحة التحكم أسفل الشاشة* — الأزرار ثابتة هناك، اضغط أي زر في أي وقت:\n"
-    "📊 التحليل · 🎯 الصفقة · 📰 الأخبار · 📈 الحالة · 🔄 تحديث · ⚙️ الإعدادات\n\n"
+    "📊 التحليل · 🎯 الصفقة · 📰 الأخبار · 📈 الحالة · 🤖 AYZR · 📒 دفتر AYZR · "
+    "🔄 تحديث · ⚙️ الإعدادات\n\n"
     "أو اكتب الأمر:\n"
     "/analyse — قراءة SMC/ICT الكاملة لكل فريم\n"
     "/plan — آخر صفقة أو حالة السوق الآن\n"
@@ -19,6 +20,10 @@ HELP = (
     "/status — ملخّص سريع\n"
     "/refresh — قراءة جديدة فوراً (تتجاوز الكاش)\n"
     "/settings — تغيير الفريمات والحساسية\n\n"
+    "🤖 *AYZR* — محرّك منفصل يعتمد على الذكاء الاصطناعي في القرار:\n"
+    "/ayzr — قراءة AYZR الكاملة (فني + اقتصادي/سياسي) وصفقتها\n"
+    "/دفتري — دفتر نتائج AYZR اليوم والإجمالي\n"
+    "_AYZR يستعمل حصته الخاصة، ولا يمسّ قرارات البوت الأساسي._\n\n"
     "البوت يفحص السوق كل فترة ويرسل عند ظهور فكرة جديدة.\n"
     "تحليل استشاري فقط — لا ينفّذ أي صفقة."
 )
@@ -38,9 +43,12 @@ SENSITIVITY: tuple[tuple[str, str, float], ...] = (
 
 # The buttons: label -> callback data. Callback data is ASCII and short,
 # because Telegram caps it at 64 bytes, and the label carries the Arabic.
+# The AYZR row is its own: an AI-first engine that lives beside the bot, on its
+# own budget and its own journal, reached only through this namespace.
 MENU: list[list[tuple[str, str]]] = [
     [("📊 التحليل الكامل", "analyse"), ("🎯 الصفقة", "plan")],
     [("📰 الأخبار", "news"), ("📈 حالة السوق", "status")],
+    [("🤖 تحليل AYZR", "ayzr:analyse"), ("📒 دفتر AYZR", "ayzr:report")],
     [("🔄 تحديث", "refresh"), ("⚙️ الإعدادات", "settings")],
 ]
 
@@ -52,6 +60,7 @@ MENU: list[list[tuple[str, str]]] = [
 REPLY_MENU: list[list[str]] = [
     ["📊 التحليل", "🎯 الصفقة"],
     ["📰 الأخبار", "📈 الحالة"],
+    ["🤖 AYZR", "📒 دفتر AYZR"],
     ["🔄 تحديث", "⚙️ الإعدادات"],
 ]
 

@@ -46,6 +46,11 @@ _COMMAND_ALIASES = {
     "settings": "settings",
     "menu": "menu",
     "قائمة": "menu",
+    # AYZR's own commands, typed or tapped from its buttons.
+    "ayzr": "ayzr:analyse",
+    "🤖": "ayzr:analyse",
+    "📒": "ayzr:report",
+    "دفتر": "ayzr:report",
 }
 
 
@@ -86,6 +91,22 @@ class CommandScreens:
             if callback_id:
                 self.tg.answer_callback(callback_id, toast)
             self.tg.send(chat_id, body, keyboard=keyboard)
+            return
+
+        # AYZR is its own engine on its own budget. It is reached only through
+        # its namespace, and imported lazily so the bot's own start-up never
+        # pays for it — pressing its button is the only thing that loads it.
+        if data.startswith("ayzr:"):
+            if callback_id:
+                self.tg.answer_callback(callback_id)
+            self.tg.typing(chat_id)
+            try:
+                from ..ayzr.panel import handle as ayzr_handle
+
+                body = ayzr_handle(data)
+            except Exception as exc:  # AYZR must never take the bot down
+                body = f"⚠️ *AYZR:* تعذّر العرض ({type(exc).__name__})."
+            self.tg.send(chat_id, body, keyboard=menu_keyboard())
             return
 
         # Everything else reads the market: clear the spinner, then show typing.

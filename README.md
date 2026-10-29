@@ -197,7 +197,7 @@ down.
 ```bash
 make check                     # ruff + format + mypy + bandit + pip-audit + pytest
 make cov                       # the suite under coverage, floor enforced
-python -m pytest tests/ -q     # 688 tests for the bot
+python -m pytest tests/ -q     # 792 tests for the bot
 ```
 
 CI runs the suite under `coverage` and **fails below a floor of 96%** of
@@ -288,12 +288,13 @@ src/goldbot/
   strategy/         plan construction and position sizing
   news/             economic calendar, RSS headlines, blackout, macro context
   ai/               Groq client and prompt
+  ayzr/             AYZR — a separate AI-first engine (own key, own journal)
   telegram/         client, menus, screens, the polling bot
   backtest/         walk engine, metrics, study, control, equity curve
 research/           reproducible robustness, sweep and control studies
 starter/            goldkit — the reusable patterns, extracted and tested
 docs/               architecture, data flow, module map
-tests/              688 tests (+20 in starter/)
+tests/              792 tests (+20 in starter/)
 Dockerfile          two-stage image, non-root, healthcheck
 docker-compose.yml  local run with the archive on a volume
 ```
@@ -302,6 +303,8 @@ Two companion documents go deeper than this README:
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how a read flows from the
   network to a card, module by module, and the invariants the tests defend.
+- **[docs/AYZR.md](docs/AYZR.md)** — AYZR, the separate AI-first engine that
+  lives beside the bot: its own key, quota, journal and Telegram row.
 - **[PORTFOLIO.md](PORTFOLIO.md)** — the engineering decisions and the
   measurements behind them, written for someone judging the work.
 

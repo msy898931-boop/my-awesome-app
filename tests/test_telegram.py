@@ -95,9 +95,9 @@ def test_menu_keyboard_shape_and_ascii_data():
 
     kb = menu_keyboard()
     rows = kb["inline_keyboard"]
-    assert len(rows) == 3
+    assert len(rows) == 4
     buttons = [b for row in rows for b in row]
-    assert len(buttons) == 6
+    assert len(buttons) == 8
     for button in buttons:
         # Telegram caps callback_data at 64 bytes and requires the label to
         # carry the Arabic, so the data itself stays short and ASCII.
@@ -538,14 +538,23 @@ def test_reply_panel_is_a_persistent_bottom_keyboard():
     assert kb["is_persistent"] is True
     assert kb["resize_keyboard"] is True
     labels = [b["text"] for row in kb["keyboard"] for b in row]
-    assert len(labels) == 6
+    assert len(labels) == 8
 
 
 def test_every_panel_button_maps_to_a_known_command():
     """A panel button sends its label as text; it must not dead-end."""
     from goldbot.telegram.bot import REPLY_MENU, resolve_data
 
-    known = {"analyse", "plan", "news", "status", "refresh", "settings"}
+    known = {
+        "analyse",
+        "plan",
+        "news",
+        "status",
+        "refresh",
+        "settings",
+        "ayzr:analyse",
+        "ayzr:report",
+    }
     for row in REPLY_MENU:
         for label in row:
             head = label.split()[0]
