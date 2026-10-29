@@ -6,6 +6,21 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **A professional backtest with a matched control.** `cli study` measures the
+  strategy over the deepest series each frame can offer: headline metrics,
+  contiguous time windows, and a control that re-runs the trades' own geometry
+  at random entry times (plus a regime-matched draw). The verdict is split into
+  `skill` / `beta` / `inconclusive` instead of asserted as one number, and a
+  metric that cannot be computed prints as an em dash, never a zero. On 833 days
+  of H1 the answer is **beta** — a long-gold bet wearing an SMC costume. The
+  study also scores each setup against its *own* control, so a single cell can
+  be judged on its own: on H1, BOS continuation read `skill` (+0.355R, random
+  p=0.003, regime p=0.012) where sweep reversal was negative — but the same
+  cell on H4 (an independent, 2253-day sample) read `beta` (+0.021R, p=0.72).
+  A single-frame `skill` verdict is therefore **not** evidence; it has to
+  replicate across frames to count, and this one does not.
+
 ### Fixed
 - **A rate-limited calendar silently withheld every trade idea.** The economic
   calendar source (`nfs.faireconomy.media`) rate-limits by IP, and the bot runs

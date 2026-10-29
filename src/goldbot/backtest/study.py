@@ -113,6 +113,15 @@ def run_study(
     span_days = round((primary[-1].time - primary[0].time) / 86400) if len(primary) > 1 else 0
     verdict = skill_test(trades, primary, n=n_control)
 
+    # The headline verdict is an average over every setup, so a single real edge
+    # can be hidden inside it — and a single drifter can drag it down. Score
+    # each setup against its own matched control: that is the only way to see
+    # whether a cell like BOS continuation is timing or another long-gold bet.
+    setup_control = {
+        s: skill_test([t for t in trades if t.setup == s], primary, n=n_control)
+        for s in sorted({t.setup for t in trades})
+    }
+
     return {
         "symbol": settings.symbol,
         "primary_tf": primary_tf,
@@ -123,6 +132,7 @@ def run_study(
         "window_metrics": block_metrics,
         "consistency": consistency(blocks),
         "control": verdict,
+        "setup_control": setup_control,
         "by_direction": by_direction,
         "by_setup": by_setup,
         "source": primary_series.source,

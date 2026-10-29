@@ -266,10 +266,24 @@ def format_report(result: dict) -> str:
         )
     lines.append("")
     lines.append("  ── حسب النموذج ──")
+    verdicts = result.get("setup_control") or {}
     for setup, sub in result["by_setup"].items():
-        lines.append(
+        line = (
             f"    {setup[:24]:24s}: n={sub['n']:4d} | توقّع={_fmt(sub['expectancy'])}"
             f" | PF={_fmt(sub['profit_factor'], signed=False)}"
+        )
+        ctrl = verdicts.get(setup)
+        if ctrl and ctrl.get("random_p") is not None:
+            line += (
+                f" | الحكم={ctrl['verdict']}"
+                f" (عشوائي p={_fmt(ctrl['random_p'], signed=False)}"
+                f" | نظام p={_fmt(ctrl['regime_p'], signed=False)})"
+            )
+        lines.append(line)
+    if verdicts:
+        lines.append(
+            "    ملاحظة: «skill» هنا لفريم واحد. حكم لا يُعتدّ به حتى يُثبَت على فريم آخر؛ "
+            "BOS على H1 قرأ skill ثم صار beta على H4."
         )
     lines.append("")
     lines.append(f"  ملاحظات: {' | '.join(result['notes'])}")

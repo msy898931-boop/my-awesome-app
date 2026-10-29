@@ -219,6 +219,22 @@ def test_the_report_includes_the_control_verdict_and_the_consistency_line():
     assert "XAUUSD" in text
 
 
+def test_the_report_prints_the_per_setup_verdict():
+    result = _result()
+    result["setup_control"] = {
+        "bos": {
+            "verdict": "skill",
+            "random_p": 0.001,
+            "regime_p": 0.02,
+        }
+    }
+    text = format_report(result)
+    assert "الحكم=skill" in text
+    assert "نظام p=0.02" in text
+    # A p-value is a proportion — it must not be dressed with a plus sign.
+    assert "p=+0" not in text
+
+
 def test_the_report_handles_an_empty_study_without_crashing():
     from goldbot.backtest.study import run_study
 

@@ -103,7 +103,10 @@ regime — and a cell is called `skill` only if it beats both at α = 0.05, `bet
 if it loses to either, `inconclusive` if the sample cannot decide. The
 distinction between the two is the whole exercise: on the historical data a
 long-gold bias beat a naive random control, and only the regime-matched control
-exposed it as drift. `research/study_control.py` runs it over the archive.
+exposed it as drift. The study scores each setup against its *own* control, not
+just the pooled average — a single real edge or a single drifter would otherwise
+vanish inside the headline verdict — and the report prints that per-setup
+verdict beside its expectancy. `research/study_control.py` runs it over the archive.
 
 ### `news/` — calendar, wires, macro, blackout
 
